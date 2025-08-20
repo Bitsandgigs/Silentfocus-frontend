@@ -20,6 +20,9 @@ import {scale, moderateScale} from 'react-native-size-matters';
 import {useNavigation} from '@react-navigation/native';
 import {ThemeContext} from '../context/ThemeContext';
 import AntDesign from 'react-native-vector-icons/AntDesign';
+import {AppContext} from '../utils/context/contextProvider';
+import {setAsyncData} from '../function/commonFunctions';
+import {Constants} from '../utils/theme';
 
 const {width, height} = Dimensions.get('window');
 
@@ -57,6 +60,9 @@ const OnboardingScreen = () => {
   const animation = useRef(new Animated.Value(0)).current;
   const orange = '#B87333';
   const insets = useSafeAreaInsets();
+
+  // Context
+  const {setIsGetStarted} = useContext(AppContext);
 
   useEffect(() => {
     Animated.timing(animation, {
@@ -118,7 +124,8 @@ const OnboardingScreen = () => {
     if (activeIndex < onboardingData.length - 1) {
       carouselRef.current.snapToNext();
     } else {
-      navigation.replace('Permission');
+      setAsyncData(Constants.asyncStorageKeys.showGetStarted, true);
+      setIsGetStarted(false);
     }
   };
 
@@ -162,7 +169,7 @@ const OnboardingScreen = () => {
               styles.button,
               {backgroundColor: orange, bottom: insets.bottom},
             ]}
-            onPress={() => navigation.navigate('Permission')}>
+            onPress={handleNext}>
             <Text style={styles.buttonText}>Next</Text>
           </TouchableOpacity>
         )}

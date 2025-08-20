@@ -15,8 +15,8 @@ import {
   heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import ModernSilentButton from '../components/ModernSilentButton';
-import ScheduleCard from '../components/ScheduleCard';
+import ModernSilentButton from '../componentes/ModernSilentButton';
+import ScheduleCard from '../componentes/ScheduleCard';
 
 const HomeScreen = () => {
   const [silentMode, setSilentMode] = useState(false);

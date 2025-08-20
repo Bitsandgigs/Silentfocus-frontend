@@ -2,15 +2,15 @@ import React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {CardStyleInterpolators} from '@react-navigation/stack';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import LogoScreen from '../screens/LogoScreen';
 import WelcomeScreen1 from '../screens/Welcome1Screen';
 import WelcomeScreen2 from '../screens/Welcome2Screen';
 import WelcomeScreen3 from '../screens/Welcome3Screen';
 import PermissionScreen from '../screens/PermissionScreen';
-import LoginScreen from '../screens/LoginScreen';
 import MainTabs from '../MainTabs';
 import {ThemeProvider} from '../context/ThemeContext';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import LoginScreen from '../screens/LoginScreen';
+import LogoScreen from '../screens/LogoScreen';
 //import HomeScreen from '../screens/HomeScreen';
 
 const Stack = createNativeStackNavigator();

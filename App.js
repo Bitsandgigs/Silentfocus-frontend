@@ -1,34 +1,24 @@
 import React from 'react';
-import {  StatusBar, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
-import AppNavigator from './src/navigations/AppNavigator'; // adjust the path as needed
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { enableScreens } from 'react-native-screens';
+import {StatusBar} from 'react-native';
+import {Colors} from './src/utils/theme';
+// Context Provider
+import ContextProvider from './src/utils/context/contextProvider';
+import {NavigationContainer} from '@react-navigation/native';
+// Stack
+import RootStack from './src/navigation/RootStack/RootStack';
+import {ThemeProvider} from './src/context/ThemeContext';
 
-enableScreens();
-
-const App = () => {
+export default function App() {
   return (
-   <SafeAreaProvider>
-<StatusBar backgroundColor="#000000" barStyle="light-content" />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoiding}
-      >
-        <AppNavigator />
-      </KeyboardAvoidingView>
-      </SafeAreaProvider>
+    <>
+      <ThemeProvider>
+        <StatusBar backgroundColor={Colors.white} barStyle={'dark-content'} />
+        <ContextProvider>
+          <NavigationContainer>
+            <RootStack />
+          </NavigationContainer>
+        </ContextProvider>
+      </ThemeProvider>
+    </>
   );
-};
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#000', // Match status bar color if desired
-  },
-  keyboardAvoiding: {
-    flex: 1,
-  },
-});
-
-export default App;
+}

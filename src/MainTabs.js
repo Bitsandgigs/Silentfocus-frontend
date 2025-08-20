@@ -1,14 +1,12 @@
-
-
 import React from 'react';
-import { useColorScheme } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import CustomTabBar from './components/CustomTabar';
+import {useColorScheme} from 'react-native';
+import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 
 import HomeScreen from './screens/HomeScreen';
 import ChatScreen from './screens/ActivityScreen';
 import SettingsScreen from './screens/SettingScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import CustomTabBar from './componentes/CustomTabar';
 
 const Tab = createBottomTabNavigator();
 
@@ -21,19 +19,31 @@ const MainTabs = () => {
         headerShown: false,
         lazy: false,
       }}
-      tabBar={(props) => <CustomTabBar {...props} theme={colorScheme} />} // 👈 pass theme here
+      tabBar={props => <CustomTabBar {...props} theme={colorScheme} />} // 👈 pass theme here
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ unmountOnBlur: false }} />
-<Tab.Screen
-  name="Missed"
-  component={ChatScreen}
-  options={{
-    tabBarIcon: ({ focused }) => <ActivityIcon focused={focused} />,
-  }}
-/>
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{unmountOnBlur: false}}
+      />
+      <Tab.Screen
+        name="Missed"
+        component={ChatScreen}
+        options={{
+          tabBarIcon: ({focused}) => <ActivityIcon focused={focused} />,
+        }}
+      />
 
-      <Tab.Screen name="Control" component={SettingsScreen} options={{ unmountOnBlur: false }} />
-      <Tab.Screen name="Accounts" component={ProfileScreen} options={{ unmountOnBlur: false }} />
+      <Tab.Screen
+        name="Control"
+        component={SettingsScreen}
+        options={{unmountOnBlur: false}}
+      />
+      <Tab.Screen
+        name="Accounts"
+        component={ProfileScreen}
+        options={{unmountOnBlur: false}}
+      />
     </Tab.Navigator>
   );
 };

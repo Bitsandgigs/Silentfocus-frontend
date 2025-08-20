@@ -204,7 +204,7 @@ const WelcomeScreen3 = () => {
   // const descColor = colorScheme === 'dark' ? '#ccc' : '#444';
 
   const handleTap = () => {
-    navigation.replace('Permission');
+    navigation.replace('PermissionScreen');
   };
 
   return (

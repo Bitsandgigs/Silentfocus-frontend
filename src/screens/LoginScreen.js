@@ -1,4 +1,4 @@
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useContext} from 'react';
 import {
   View,
   Text,
@@ -27,11 +27,14 @@ import {
   widthPercentageToDP as wp,
 } from 'react-native-responsive-screen';
 import responsive from '../styles/responsive';
+import {AppContext} from '../utils/context/contextProvider';
+import {setAsyncData} from '../function/commonFunctions';
+import {Constants} from '../utils/theme';
 
 const {height} = Dimensions.get('window');
 
 const LoginScreen = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLoginData] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -46,6 +49,9 @@ const LoginScreen = () => {
   const subTextColor = isDark ? '#ccc' : '#444';
   const cardBg = isDark ? 'rgba(21, 22, 21, 0.17)' : '#fff';
   const inputBg = 'rgba(85, 85, 85, 0.12)';
+
+  // useContext
+  const {setIsLogin, updateConstantValue} = useContext(AppContext);
   return (
     <SafeAreaView style={[styles.container, {backgroundColor}]}>
       <StatusBar
@@ -87,7 +93,7 @@ const LoginScreen = () => {
                   <View style={styles.tabRow}>
                     <TouchableOpacity
                       style={[styles.tabButton, isLogin && styles.tabActive]}
-                      onPress={() => setIsLogin(true)}>
+                      onPress={() => setIsLoginData(true)}>
                       <Text
                         style={[
                           styles.tabText,
@@ -98,7 +104,7 @@ const LoginScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.tabButton, !isLogin && styles.tabActive]}
-                      onPress={() => setIsLogin(false)}>
+                      onPress={() => setIsLoginData(false)}>
                       <Text
                         style={[
                           styles.tabText,
@@ -168,7 +174,13 @@ const LoginScreen = () => {
                     style={styles.loginButton}
                     onPress={() => {
                       if (isLogin) {
-                        navigation.navigate('MainTabs');
+                        // navigation.navigate('MainTabs');
+                        setAsyncData(
+                          Constants.asyncStorageKeys.isLoginUser,
+                          true,
+                        );
+                        setIsLogin(true);
+                        // updateConstantValue(true);
                       } else {
                         setModalVisible(true);
                       }

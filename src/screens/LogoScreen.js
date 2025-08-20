@@ -1,4 +1,4 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useContext, useEffect, useRef} from 'react';
 import {
   View,
   useColorScheme,
@@ -16,6 +16,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import Logo from '../assets/svgs/logo'; // Mic+Slash Icon SVG
+import {AppContext} from '../utils/context/contextProvider';
 const LogoScreen = () => {
   const navigation = useNavigation();
   const colorScheme = useColorScheme();
@@ -24,6 +25,8 @@ const LogoScreen = () => {
 
   const backgroundColor = colorScheme === 'dark' ? '#000' : '#fff';
   const barStyle = colorScheme === 'dark' ? 'light-content' : 'dark-content';
+
+  const {setIsSplashShow} = useContext(AppContext);
 
   useEffect(() => {
     // Step 1: Animate logo from inside out (scale + fade in)
@@ -61,7 +64,7 @@ const LogoScreen = () => {
 
     // Step 3: Navigate after animation finishes
     const timeout = setTimeout(() => {
-      navigation.replace('Onboarding');
+      setIsSplashShow(false);
     }, 2500); // Total time of full animation
 
     return () => clearTimeout(timeout);
