@@ -17,6 +17,7 @@ import Svg, {
 } from 'react-native-svg';
 import Logo from '../assets/svgs/logo'; // Mic+Slash Icon SVG
 import {AppContext} from '../utils/context/contextProvider';
+import SplashScreen from 'react-native-splash-screen';
 const LogoScreen = () => {
   const navigation = useNavigation();
   const colorScheme = useColorScheme();
@@ -69,6 +70,10 @@ const LogoScreen = () => {
 
     return () => clearTimeout(timeout);
   }, [navigation, scale, opacity]);
+
+  useEffect(() => {
+    SplashScreen.hide();
+  }, []);
 
   return (
     <SafeAreaView style={[styles.container, {backgroundColor}]}>

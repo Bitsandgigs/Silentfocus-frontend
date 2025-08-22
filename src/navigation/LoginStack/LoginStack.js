@@ -4,9 +4,9 @@ import React from 'react';
 import {createStackNavigator} from '@react-navigation/stack';
 
 // Mics Constants
-import {Screens} from '../../utils/theme';
-import PermissionScreen from '../../screens/PermissionScreen';
 import LoginScreen from '../../screens/LoginScreen';
+import PermissionScreen from '../../screens/PermissionScreen';
+import screens from '../../utils/theme/screens';
 
 export default function LoginStack() {
   // Navigation
@@ -14,14 +14,14 @@ export default function LoginStack() {
 
   // Render Component
   return (
-    <LoginStackNavigator.Navigator initialRouteName={'PermissionScreen'}>
+    <LoginStackNavigator.Navigator initialRouteName={screens.PermissionScreen}>
       <LoginStackNavigator.Screen
-        name={'PermissionScreen'}
+        name={screens.PermissionScreen}
         component={PermissionScreen}
         options={{headerShown: false}}
       />
       <LoginStackNavigator.Screen
-        name="Login"
+        name={screens.LoginScreen}
         component={LoginScreen}
         options={{headerShown: false}}
       />

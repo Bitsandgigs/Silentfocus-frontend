@@ -19,7 +19,6 @@ import {
 import {scale, moderateScale} from 'react-native-size-matters';
 import {useNavigation} from '@react-navigation/native';
 import {ThemeContext} from '../context/ThemeContext';
-import AntDesign from 'react-native-vector-icons/AntDesign';
 import {AppContext} from '../utils/context/contextProvider';
 import {setAsyncData} from '../function/commonFunctions';
 import {Constants} from '../utils/theme';
@@ -160,7 +159,13 @@ const OnboardingScreen = () => {
             <TouchableOpacity
               style={[styles.nextButton, {backgroundColor: orange}]}
               onPress={handleNext}>
-              <AntDesign name="arrowright" size={30} color="#fff" />
+              {/* <AntDesign name="arrowright" size={30} color="#fff" /> */}
+              {/* <AntDesign name="arrow-right" size={30} color="#fff" /> */}
+              <Image
+                source={require('../assets/images/arrow_right.png')}
+                style={{width: 35, height: 35}}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
           </View>
         ) : (

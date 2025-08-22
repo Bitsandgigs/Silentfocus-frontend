@@ -21,6 +21,7 @@ import Toggle from '../assets/svgs/Toggle';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import screens from '../utils/theme/screens';
 const {width, height} = Dimensions.get('window');
 
 //const insets = useSafeAreaInsets();
@@ -162,7 +163,7 @@ const PermissionScreen = () => {
           styles.button,
           {backgroundColor: orange, bottom: insets.bottom + height * 0.015},
         ]}
-        onPress={() => navigation.navigate('Login')}>
+        onPress={() => navigation.navigate(screens.LoginScreen)}>
         <Text style={styles.buttonText}>Continue</Text>
       </TouchableOpacity>
       {/* </SafeAreaView> */}
