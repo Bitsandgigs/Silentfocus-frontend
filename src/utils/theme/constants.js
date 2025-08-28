@@ -1,24 +1,19 @@
-import {Dimensions} from 'react-native';
+import { Dimensions } from 'react-native';
 
 export const defaultUser = {
-  id: 0,
-  name: '',
+  user_id: 0,
+  username: '',
   email: '',
-  phonenumber: '',
-  profile_image: null,
+  phone_number: '',
 };
 
 export const commonConstant = {
-  appName: 'Whats Mark',
+  appName: 'Silence Focus',
   scrWidth: Dimensions.get('screen').width,
   scrHeight: Dimensions.get('screen').height,
   appUserId: 0,
   appUser: defaultUser,
   appToken: '',
-  appBaseURL: '',
-  InteractionId: '',
-  appPusherData: {},
-  oneSignalAppId: '9397cedf-fb02-43ef-b786-ea99b08100b2',
 
   // animation Timing
   animTime100: 100,
@@ -44,7 +39,6 @@ export const commonConstant = {
 
 export const apiStatusCode = {
   success: 200,
-  successDocument: 201,
   invalidContent: 404,
   unprocessableContent: 422,
   unAuthorized: 401,
@@ -53,11 +47,8 @@ export const apiStatusCode = {
 
 export const asyncStorageKeys = {
   showGetStarted: 'showGetStarted',
-  userBaseURL: 'userBaseURL',
   userToken: 'userToken',
   userData: 'userData',
-  pusherData: 'pusherData',
-  isLoginUser: 'isLoginUser',
 };
 
 export const eventListenerKeys = {

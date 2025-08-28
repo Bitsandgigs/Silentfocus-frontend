@@ -4,8 +4,8 @@ import NetInfo from '@react-native-community/netinfo';
 
 // Mics Constants
 // import baseLocal from '../locales/baseLocalization';
-import {Constants, Emitter, Responsive} from '../utils/theme';
-import {defaultUser} from '../utils/theme/constants';
+import { Constants, Emitter, Responsive } from '../utils/theme';
+import { defaultUser } from '../utils/theme/constants';
 
 // Common Function
 // Localization
@@ -51,6 +51,7 @@ export const width = pixel => {
 export const height = pixel => {
   return Responsive.heightPercentageToDP(pixel / 8);
 };
+
 
 // Logout
 export const logout = () => {

@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-community/blur": "^4.4.1",
     "@react-native-community/netinfo": "^11.4.1",
@@ -19,12 +20,16 @@
     "@react-navigation/stack": "^7.3.3",
     "axios": "^1.11.0",
     "fbemitter": "^3.0.0",
-    "lucide-react-native": "^0.511.0",
+    "formik": "^2.4.6",
     "react": "19.0.0",
     "react-native": "0.79.2",
+    "react-native-confirmation-code-field": "^8.0.1",
+    "react-native-device-info": "^14.0.4",
+    "react-native-extra-dimensions-android": "^1.2.5",
     "react-native-gesture-handler": "^2.28.0",
     "react-native-keyboard-manager": "^6.5.16-0",
     "react-native-linear-gradient": "^2.8.3",
+    "react-native-permissions": "^5.4.2",
     "react-native-reanimated": "^3.19.1",
     "react-native-responsive-screen": "^1.4.2",
     "react-native-safe-area-context": "^5.4.1",
@@ -33,7 +38,7 @@
     "react-native-snap-carousel": "^4.0.0-beta.6",
     "react-native-splash-screen": "^3.3.0",
     "react-native-svg": "^15.12.0",
-    "react-native-vector-icons": "^10.3.0"
+    "yup": "^1.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

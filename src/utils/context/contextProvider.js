@@ -1,30 +1,30 @@
-import {createContext, useEffect, useReducer, useState} from 'react';
+import { createContext, useEffect, useReducer, useState } from 'react';
 
 // Lib
-import {addEventListener} from '@react-native-community/netinfo';
+import { addEventListener } from '@react-native-community/netinfo';
 
 // Mics Constants
-import {getAsyncData} from '../../function/commonFunctions';
-import {Constants, Emitter} from '../theme';
+import { getAsyncData } from '../../function/commonFunctions';
+import { Constants, Emitter } from '../theme';
 
 // Create Context
 export const AppContext = createContext({
   isSplashShow: true,
-  setIsSplashShow: () => {},
+  setIsSplashShow: () => { },
   isGetStarted: true,
-  setIsGetStarted: () => {},
+  setIsGetStarted: () => { },
   isLogin: false,
-  setIsLogin: () => {},
+  setIsLogin: () => { },
   isInternetConnection: true,
-  setIsInternetConnection: () => {},
+  setIsInternetConnection: () => { },
   constantValue: Constants.commonConstant.appUser,
-  updateConstantValue: () => {},
+  updateConstantValue: () => { },
 });
 
 const constantsReducer = (state, action) => {
   switch (action.type) {
     case 'UPDATE_CONSTANT':
-      return {...state, constantValue: action.payload};
+      return { ...state, constantValue: action.payload };
     default:
       return state;
   }
@@ -32,7 +32,7 @@ const constantsReducer = (state, action) => {
 
 export default function ContextProvider(props) {
   // props
-  const {children} = props;
+  const { children } = props;
 
   // useState
   const [isSplashShow, setIsSplashShow] = useState(true);
@@ -46,7 +46,7 @@ export default function ContextProvider(props) {
 
   // Update constant value
   const updateConstantValue = newValue => {
-    dispatch({type: 'UPDATE_CONSTANT', payload: newValue});
+    dispatch({ type: 'UPDATE_CONSTANT', payload: newValue });
   };
 
   // useEffect
@@ -78,40 +78,14 @@ export default function ContextProvider(props) {
       }
     });
 
-    getAsyncData(Constants.asyncStorageKeys.userBaseURL).then(response => {
-      if (response !== null) {
-        Constants.commonConstant.appBaseURL = response;
-      }
-    });
-
-    getAsyncData(Constants.asyncStorageKeys.userToken).then(token => {
-      if (token !== null) {
-        Constants.commonConstant.appToken = `Bearer ${token}`;
-      }
-    });
-
-    getAsyncData(Constants.asyncStorageKeys.isLoginUser).then(response => {
-      if (response === true) {
+    getAsyncData(Constants.asyncStorageKeys.userData).then(data => {
+      if (data !== null) {
+        Constants.commonConstant.appUser = data;
+        Constants.commonConstant.appUserId = data?.user_id;
+        updateConstantValue(data);
         setIsLogin(true);
       } else {
         setIsLogin(false);
-      }
-    });
-
-    // getAsyncData(Constants.asyncStorageKeys.userData).then(data => {
-    //   if (data !== null) {
-    //     Constants.commonConstant.appUser = data;
-    //     Constants.commonConstant.appUserId = data?.id;
-    //     updateConstantValue(data);
-    //     setIsLogin(true);
-    //   } else {
-    //     setIsLogin(false);
-    //   }
-    // });
-
-    getAsyncData(Constants.asyncStorageKeys.pusherData).then(data => {
-      if (data !== null) {
-        Constants.commonConstant.appPusherData = data;
       }
     });
 

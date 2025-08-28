@@ -1,4 +1,4 @@
-import {Keyboard} from 'react-native';
+import { Keyboard } from 'react-native';
 
 // Lib
 import Axios from 'axios';
@@ -7,9 +7,9 @@ import Axios from 'axios';
 import APIConfig from '../../config';
 
 // Mics Constants
-import {apiStatusCode, commonConstant} from '../theme/constants';
-import {checkInternetConnection, logout} from '../../function/commonFunctions';
-import {Constants, Emitter} from '../theme';
+import { apiStatusCode, commonConstant } from '../theme/constants';
+import { checkInternetConnection, logout } from '../../function/commonFunctions';
+import { Constants, Emitter } from '../theme';
 
 const axiosInstance = Axios.create({
   baseURL: APIConfig.baseURL,
@@ -18,7 +18,7 @@ const axiosInstance = Axios.create({
 
 axiosInstance.interceptors.request.use(
   async config => {
-    const {appToken} = commonConstant;
+    const { appToken } = commonConstant;
     if (appToken !== '') {
       config.headers.Authorization = appToken;
     }
@@ -76,7 +76,6 @@ const APICall = async (
   const apiMethod = method.toLowerCase();
   const config = {
     method: apiMethod,
-    baseURL: Constants.commonConstant.appBaseURL,
     timeout: 1000 * 60 * 2,
   };
 
@@ -96,7 +95,7 @@ const APICall = async (
     (apiMethod === 'post' || apiMethod === 'patch') &&
     formData
   ) {
-    headers = {'Content-Type': 'multipart/form-data'};
+    headers = { 'Content-Type': 'multipart/form-data' };
     config.data = getFormData(body);
   } else {
     config.data = body;
@@ -108,7 +107,7 @@ const APICall = async (
   return new Promise(resolve => {
     axiosInstance(config)
       .then(res => {
-        resolve({statusCode: res.status, data: res.data});
+        resolve({ statusCode: res.status, data: res.data });
       })
       .catch(error => {
         console.log('error =====', JSON.stringify(error));
@@ -118,7 +117,7 @@ const APICall = async (
             data: error.response.data,
           });
         }
-        resolve({statusCode: 500, data: 'Something went to wrong!'});
+        resolve({ statusCode: 500, data: 'Something went to wrong!' });
       });
   });
 };
