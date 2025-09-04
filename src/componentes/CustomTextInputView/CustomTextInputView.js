@@ -1,19 +1,25 @@
-import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { styles } from "./CustomTextInputViewStyle";
-import { Colors } from "../../utils/theme";
-import KeyboardManager from "react-native-keyboard-manager";
-
+import {
+    Image,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import {styles} from './CustomTextInputViewStyle';
+import {Colors} from '../../utils/theme';
+import KeyboardManager from 'react-native-keyboard-manager';
 
 export default function CustomTextInputView(props) {
-
     const {
         textColor = null,
         placeholder = '',
         value = '',
-        onChangeText = () => { },
+        onChangeText = () => {},
         innerRef,
         blurOnSubmit = true,
-        onSubmitEditing = () => { },
+        onSubmitEditing = () => {},
         secureTextEntry = false,
         keyboardType = 'default',
         returnKeyType = 'next',
@@ -22,7 +28,7 @@ export default function CustomTextInputView(props) {
         leftIconStyle = {},
         rightIcon,
         rightIconStyle = {},
-        onPressRightIcon = () => { },
+        onPressRightIcon = () => {},
         textInputStyle = {},
         customTextInputStyle = {},
         isValid = true,
@@ -31,6 +37,7 @@ export default function CustomTextInputView(props) {
         disabled = false,
         rightCustomElement,
         onPress,
+        textStyle = {},
     } = props;
 
     // Variables
@@ -59,7 +66,9 @@ export default function CustomTextInputView(props) {
                     textInputStyle,
                 ]}>
                 {leftIcon && (
-                    <TouchableOpacity disabled style={styles.leftIconTouchableOpacity}>
+                    <TouchableOpacity
+                        disabled
+                        style={styles.leftIconTouchableOpacity}>
                         <Image
                             style={[styles.leftIcon, leftIconStyle]}
                             source={leftIcon}
@@ -73,7 +82,7 @@ export default function CustomTextInputView(props) {
                     <TextInput
                         style={[
                             styles.textInputView,
-                            textColor !== null && { color: textColor },
+                            textColor !== null && {color: textColor},
                         ]}
                         placeholder={placeholder}
                         textContentType={'oneTimeCode'}
@@ -103,7 +112,13 @@ export default function CustomTextInputView(props) {
                         numberOfLines={1}
                         style={[
                             styles.textView,
-                            { color: value !== '' ? Colors.black : Colors.placeHolder },
+                            textStyle,
+                            {
+                                color:
+                                    value !== ''
+                                        ? Colors.black
+                                        : Colors.placeHolder,
+                            },
                         ]}>
                         {value !== '' ? value : placeholder}
                     </Text>
@@ -115,7 +130,10 @@ export default function CustomTextInputView(props) {
                         style={styles.rightIconTouchableOpacity}>
                         {!isValid ? (
                             <Image
-                                style={[styles.errorImageStyle, styles.rightIcon]}
+                                style={[
+                                    styles.errorImageStyle,
+                                    styles.rightIcon,
+                                ]}
                                 source={rightIcon}
                                 resizeMode={'contain'}
                                 resizeMethod={'resize'}

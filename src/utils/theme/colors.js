@@ -4,6 +4,7 @@ const Colors = {
     themeColor: '#B87333',
     hideThemeColor: '#B8733380',
     inputOtpBg: '#EEEEEE',
+    listItemBg: '#5555551F',
 
     // RGBA
     textInputBg: 'rgba(85, 85, 85, 0.12)',

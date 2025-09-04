@@ -8,22 +8,28 @@ import {createStackNavigator} from '@react-navigation/stack';
 // import {BottomTabScreens} from './BottomTab.types';
 
 // Mics Constants
-import {Screens} from '../../utils/theme';
+
 import MainTabs from '../../MainTabs';
-import LogoScreen from '../../screens/LogoScreen';
+import ScheduleTimeScreen from '../../screens/ScheduleTimeScreen';
+import screens from '../../utils/theme/screens';
 
 export default function HomeStack() {
-  // Navigation
-  const HomeStackNavigator = createStackNavigator();
+    // Navigation
+    const HomeStackNavigator = createStackNavigator();
 
-  // Render Component
-  return (
-    <HomeStackNavigator.Navigator initialRouteName={'MainTabs'}>
-      <HomeStackNavigator.Screen
-        name={'MainTabs'}
-        component={MainTabs}
-        options={{headerShown: false}}
-      />
-    </HomeStackNavigator.Navigator>
-  );
+    // Render Component
+    return (
+        <HomeStackNavigator.Navigator initialRouteName={'MainTabs'}>
+            <HomeStackNavigator.Screen
+                name={'MainTabs'}
+                component={MainTabs}
+                options={{headerShown: false}}
+            />
+            <HomeStackNavigator.Screen
+                name={screens.ScheduleTimeScreen}
+                component={ScheduleTimeScreen}
+                options={{headerShown: false}}
+            />
+        </HomeStackNavigator.Navigator>
+    );
 }

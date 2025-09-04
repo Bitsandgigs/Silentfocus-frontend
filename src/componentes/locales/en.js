@@ -1,0 +1,18 @@
+export default {
+    SF1: 'Hi',
+    SF2: 'Click below to toggle Silent Mode',
+    SF3: 'Add Schedule',
+    SF4: 'SET A SCHEDULE',
+    SF5: 'Have the silent Focus turn on automatically at a set time',
+    SF6: 'Days',
+    SF7: 'From',
+    SF8: 'To',
+    SF9: '08:00 AM',
+    SF10: 'Starting Time',
+    SF11: 'Select',
+    SF12: 'Ending Time',
+    SF13: 'Invalid time format. Please try again.',
+    SF14: 'To time is greater than from date and time. Please select other time.',
+    SF15: 'Select other time',
+    SF16: 'Confirm',
+};

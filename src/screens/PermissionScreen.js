@@ -9,6 +9,7 @@ import {
     Easing,
     Dimensions,
     ScrollView,
+    NativeModules,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -27,11 +28,14 @@ const {width, height} = Dimensions.get('window');
 const PermissionScreen = () => {
     const navigation = useNavigation();
 
+    const {SilentFocus} = NativeModules;
+
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const [isLocationEnabled, setIsLocationEnabled] = useState(false);
     const [isCalendarEnabled, setIsCalendarEnabled] = useState(false);
     const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
+    const [isDNDEnabled, setIsDNDEnabled] = useState(false);
 
     const textColor = isDark ? '#fff' : '#000';
     const subtitleColor = isDark ? '#aaa' : '#555';
@@ -108,6 +112,13 @@ const PermissionScreen = () => {
 
     const requestNotificationPermission = () => {
         setIsNotificationsEnabled(!isNotificationsEnabled);
+    };
+
+    const onDNDPermission = () => {
+        SilentFocus.openDndAccessSettings();
+        // Permissions.requestNotificationPermission(
+        //     requestNotificationPermission,
+        // );
     };
 
     const onPressContinue = () => {
@@ -220,6 +231,33 @@ const PermissionScreen = () => {
                         </View>
                         <TouchableOpacity onPress={onNotificationPermission}>
                             <Toggle isOn={isNotificationsEnabled} />
+                        </TouchableOpacity>
+                    </View>
+                    {/* Notification Permission */}
+                    <View style={[styles.card, {backgroundColor: cardColor}]}>
+                        <View style={styles.icon}>
+                            <NotificationIcon
+                                width={24}
+                                height={24}
+                                color={orange}
+                            />
+                        </View>
+                        <View style={styles.textBlock}>
+                            <Text
+                                style={[styles.cardTitle, {color: textColor}]}>
+                                DND
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.cardDescription,
+                                    {color: subtitleColor},
+                                ]}>
+                                To notify you about missed calls and messages
+                                after silent mode ends.
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={onDNDPermission}>
+                            <Toggle isOn={isDNDEnabled} />
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
