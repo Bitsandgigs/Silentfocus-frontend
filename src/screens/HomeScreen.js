@@ -31,9 +31,14 @@ import ContainerView from '../componentes/ContainerView/ContainerView';
 import SafeAreaContainerView from '../componentes/SafeAreaContainerView/SafeAreaContainerView';
 
 // Misc Constants
-import {Colors, Images} from '../utils/theme';
+import {Colors, Constants, Images} from '../utils/theme';
 import screens from '../utils/theme/screens';
 import {height, localize, width} from '../function/commonFunctions';
+import EndPoints from '../utils/api/endpoints';
+import APICall from '../utils/api/api';
+import {showAlert} from '../function/Alert';
+import clock from '../assets/svgs/clock';
+import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function HomeScreen() {
     const navigation = useNavigation();
@@ -42,22 +47,24 @@ export default function HomeScreen() {
     const [timer, setTimer] = useState(900);
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
-    const [arrayEvents, setArrayEvents] = useState([
-        {
-            id: '1',
-            start: '23:40',
-            end: '23:55',
-            days: 'Everyday',
-            enabled: true,
-        },
-        {
-            id: '2',
-            start: '10:00',
-            end: '18:00',
-            days: 'Weekdays',
-            enabled: false,
-        },
-    ]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [arrayEvents, setArrayEvents] = useState([]);
+    // const [arrayEvents, setArrayEvents] = useState([
+    //     {
+    //         id: 1,
+    //         startTime: '12:12',
+    //         endTime: '14:00',
+    //         days: 'Everyday',
+    //         enabled: false,
+    //     },
+    //     {
+    //         id: 2,
+    //         startTime: '15:00',
+    //         endTime: '18:00',
+    //         days: 'Weekdays',
+    //         enabled: false,
+    //     },
+    // ]);
     const {SilentFocus} = NativeModules;
     const [timeLeft, setTimeLeft] = useState('00:00:00');
     const [running, setRunning] = useState(false);
@@ -106,8 +113,15 @@ export default function HomeScreen() {
     }, [route.params?.newSchedule]);
 
     useEffect(() => {
-        console.log('useEffect logs=======', 'called useffect');
         loadEvents();
+    }, []);
+
+    useEffect(() => {
+        const payload = {
+            userId: '4' ? '4' : '',
+        };
+        setIsLoading(true);
+        getScheduleApiCall(payload);
     }, []);
 
     const loadEvents = async () => {
@@ -121,15 +135,11 @@ export default function HomeScreen() {
             endDate,
         );
 
-        console.log('fetchedEvents=======', fetchedEvents);
-        // Add into FlatList data
         addCalendarEventsToData(fetchedEvents);
     };
 
     const addCalendarEventsToData = events => {
         const formattedEvents = events.map(convertEventToSchedule);
-
-        // merge custom schedules + calendar schedules
         // setData(prev => [...prev, ...formattedEvents]);
     };
 
@@ -164,7 +174,7 @@ export default function HomeScreen() {
 
     const ensureAccess = async () => {
         if (Platform.OS !== 'android') {
-            Alert.alert('Not supported', 'This feature works only on Android.');
+            // Alert.alert('Not supported', 'This feature works only on Android.');
             return false;
         }
         const ok = await SilentFocus.hasDndAccess();
@@ -184,6 +194,7 @@ export default function HomeScreen() {
         }
         return true;
     };
+
     useEffect(() => {
         let interval;
         if (silentMode && timer > 0) {
@@ -202,7 +213,6 @@ export default function HomeScreen() {
     }, [silentMode, timer]);
 
     const handleTimerComplete = async () => {
-        console.log('Timer ended, switching back to NORMAL mode');
         await setPhoneNormal();
         setSilentMode(false);
         setRunning(false);
@@ -210,49 +220,59 @@ export default function HomeScreen() {
     };
 
     const setPhoneSilent = async () => {
-        if (!(await ensureAccess())) return;
-        await SilentFocus.setSilent();
-        console.log('Phone set to SILENT mode');
+        if (await ensureAccess()) {
+            await SilentFocus.setSilent();
+        }
     };
 
     const setPhoneNormal = async () => {
-        if (!(await ensureAccess())) return;
-        await SilentFocus.setNormal();
-        console.log('Phone set to NORMAL mode');
+        if (await ensureAccess()) {
+            await SilentFocus.setNormal();
+        }
     };
 
     const toggleSwitch = async id => {
-        // const updatedData = arrayEvents.map(item =>
-        //     item.id === id ? {...item, enabled: !item.enabled} : item,
-        // );
-        // setArrayEvents(updatedData);
+        const updatedData = arrayEvents.map(item =>
+            item.id === id ? {...item, enabled: !item.enabled} : item,
+        );
 
-        // const selectedSchedule = updatedData.find(item => item.id === id);
+        setArrayEvents(updatedData);
 
-        // if (selectedSchedule?.enabled) {
-        // Turn ON Silent Mode
-        console.log('Silent mode ON for scheduled timer');
-        await setPhoneSilent();
-        setSilentMode(true);
-        setTimer(900); // Reset timer to 15 min
-        setRunning(true);
+        const selectedSchedule = updatedData.find(item => item.id === id);
 
-        BackgroundService.start(backgroundTask, {
-            taskName: 'SilentTimer',
-            taskTitle: 'Silent Timer Running',
-            taskDesc: 'Tracking scheduled silent mode timer',
-            taskIcon: {name: 'ic_launcher', type: 'mipmap'},
-            parameters: {delay: 1000},
-            foregroundServiceType: 'dataSync',
-        });
-        // } else {
-        //     // Turn OFF manually
-        //     console.log('Silent mode manually turned OFF');
-        //     await setPhoneNormal();
-        //     setSilentMode(false);
-        //     setRunning(false);
-        //     await BackgroundService.stop();
-        // }
+        const payload = {
+            schedule_id: selectedSchedule.id ? selectedSchedule.id : '',
+            isTimerEnabled: selectedSchedule.enabled
+                ? selectedSchedule.enabled
+                : 'false',
+        };
+
+        console.log('get_time_api_call_data', payload);
+        setIsLoading(true);
+        postTimerScheduleApiCall(payload);
+
+        console.log('updatedData_updatedData', selectedSchedule);
+
+        if (selectedSchedule?.enabled) {
+            setPhoneSilent();
+            setSilentMode(true);
+            setTimer(900);
+            setRunning(true);
+
+            BackgroundService.start(backgroundTask, {
+                taskName: 'SilentTimer',
+                taskTitle: 'Silent Timer Running',
+                taskDesc: 'Tracking scheduled silent mode timer',
+                taskIcon: {name: 'ic_launcher', type: 'mipmap'},
+                parameters: {delay: 1000, schedule: selectedSchedule},
+                foregroundServiceType: 'dataSync',
+            });
+        } else {
+            setPhoneNormal();
+            setSilentMode(false);
+            setRunning(false);
+            await BackgroundService.stop();
+        }
     };
 
     const getTimestamp = timeStr => {
@@ -270,72 +290,38 @@ export default function HomeScreen() {
         return `${h}:${m}:${s}`;
     };
 
-    const checkAndRunTimer = async () => {
+    // const getEnabledEvent = (schedule) => {
+    //     console.log('arrayEvents =====', arrayEvents);
+    //     return arrayEvents.find(ev => ev.enabled === true);
+    // };
+
+    const checkAndRunTimer = async schedule => {
         if (arrayEvents && arrayEvents.length > 0) {
-            const now = Date.now();
-            let activeEvent = null;
+            if (schedule) {
+                const start = getTimestamp(schedule.startTime);
+                const end = getTimestamp(schedule.endTime);
+                const now = Date.now();
 
-            for (const event of arrayEvents) {
-                const start = getTimestamp(event.start);
-                const end = getTimestamp(event.end);
-
-                console.log('start =====', start);
-                console.log('end =====', end);
-                console.log('now =====', now);
-                console.log('event.enabled', event.enabled);
-
-                if (event.enabled && now >= start && now <= end) {
-                    activeEvent = {start, end};
-                    break;
+                if (now >= start && now <= end) {
+                    setRunning(true);
+                    const remaining = end - now;
+                    setTimeLeft(formatTime(remaining));
+                    await AsyncStorage.setItem(
+                        'timer_state',
+                        JSON.stringify({start, end}),
+                    );
                 } else {
-                    console.log('Else calll');
+                    setRunning(false);
+                    setTimeLeft('00:00:00');
+                    await AsyncStorage.removeItem('timer_state');
                 }
-            }
-
-            console.log('activeEvent =====', activeEvent);
-
-            if (activeEvent) {
-                setRunning(true);
-                const remaining = activeEvent.end - now;
-                setTimeLeft(formatTime(remaining));
-
-                await AsyncStorage.setItem(
-                    'timer_state',
-                    JSON.stringify(activeEvent),
-                );
-
-                // Ensure phone goes to silent mode
-                // await setPhoneSilent();
             } else {
                 setRunning(false);
                 setTimeLeft('00:00:00');
                 await AsyncStorage.removeItem('timer_state');
-
-                // Ensure phone goes back to normal
-                // await setPhoneNormal();
             }
         }
     };
-
-    // const checkAndRunTimer = async () => {
-    //     const start = getTimestamp(event.startTime);
-    //     const end = getTimestamp(event.endTime);
-    //     const now = Date.now();
-
-    //     if (event.enabled && now >= start && now <= end) {
-    //         setRunning(true);
-    //         const remaining = end - now;
-    //         setTimeLeft(formatTime(remaining));
-    //         await AsyncStorage.setItem(
-    //             'timer_state',
-    //             JSON.stringify({start, end}),
-    //         );
-    //     } else {
-    //         setRunning(false);
-    //         setTimeLeft('00:00:00');
-    //         await AsyncStorage.removeItem('timer_state');
-    //     }
-    // };
 
     const restoreState = async () => {
         const saved = await AsyncStorage.getItem('timer_state');
@@ -349,10 +335,10 @@ export default function HomeScreen() {
         }
     };
 
-    const backgroundTask = async ({delay}) => {
+    const backgroundTask = async ({delay, schedule}) => {
         for (;;) {
             await new Promise(r => setTimeout(r, delay));
-            await checkAndRunTimer();
+            await checkAndRunTimer(schedule);
         }
     };
     // useEffect(() => {
@@ -374,6 +360,96 @@ export default function HomeScreen() {
         navigation.navigate(screens.ScheduleTimeScreen);
     };
 
+    const getScheduleApiCall = async payload => {
+        const url = EndPoints.getScheduleTimerData;
+
+        await APICall('get', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                if (responseData?.status === '1') {
+                    console.log('responseData_Api_Call_get', responseData);
+                    const formattedData = responseData.result.map(
+                        (item, index) => ({
+                            id: item.schedule_id || index, // Use API id or fallback index
+                            startTime: item.from_time || '00:00',
+                            endTime: item.to_time || '00:00',
+                            days: item.selected_days || 'Everyday',
+                            enabled: item.isTimerEnabled === true || false, // Default false if undefined
+                        }),
+                    );
+                    setArrayEvents(formattedData);
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
+    const postTimerScheduleApiCall = async payload => {
+        const url = EndPoints.postTimerSchedule;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                if (responseData?.status === '1') {
+                    console.log('responseData_for_switch', responseData);
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
     // Render Component
     const renderCustomScheduleItem = ({item}) => (
         <View style={styles.containerView}>
@@ -393,8 +469,8 @@ export default function HomeScreen() {
                                 styles.timeRange,
                                 {color: isDark ? 'white' : '#1C1C1C'},
                             ]}>
-                            {convertTo24HourFormat(item.start)} -{' '}
-                            {convertTo24HourFormat(item.end)}
+                            {convertTo24HourFormat(item.startTime)} -{' '}
+                            {convertTo24HourFormat(item.endTime)}
                         </Text>
 
                         <View style={styles.labelBlock}>
@@ -610,6 +686,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                 </View>
             </SafeAreaContainerView>
+            <CustomLoader isLoading={isLoading} />
         </ContainerView>
     );
 }

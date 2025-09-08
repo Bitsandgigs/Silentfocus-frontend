@@ -19,17 +19,15 @@ import SafeAreaContainerView from '../componentes/SafeAreaContainerView/SafeArea
 import CustomTextInputView from '../componentes/CustomTextInputView/CustomTextInputView';
 
 // Misc Constants
-import {
-    convertTo24HourFormat,
-    height,
-    localize,
-    width,
-} from '../function/commonFunctions';
+import {height, localize, width} from '../function/commonFunctions';
 import BackIcon from '../assets/svgs/Back';
-import {Colors, Images, Responsive} from '../utils/theme';
+import {Colors, Constants, Images, Responsive} from '../utils/theme';
 import CustomDateTimePicker from '../componentes/CustomDateTimePicker/CustomDateTimePicker';
 import {showAlert} from '../function/Alert';
 import CustomButton from '../componentes/CustomButton/CustomButton';
+import EndPoints from '../utils/api/endpoints';
+import APICall from '../utils/api/api';
+import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function ScheduleTimeScreen() {
     // navigation
@@ -67,6 +65,7 @@ export default function ScheduleTimeScreen() {
     );
     const [isToTimeModalVisible, setIsToTimeModalVisible] = useState(false);
     const [toTimeString, setToTimeString] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     const formattedTime = time => moment(time).format('hh:mm A');
 
@@ -190,10 +189,18 @@ export default function ScheduleTimeScreen() {
             days: selectedDays || 'Custom',
             enabled: true,
         };
+        const payload = {
+            userId: '4' ? '4' : '',
+            from_time: fromTimeString ? fromTimeString : '',
+            to_time: toTimeString ? toTimeString : '',
+            days: selectedDays ? selectedDays : '',
+        };
 
-        console.log('newSchedule', newSchedule);
+        setIsLoading(true);
+        SetScheduleApiCall(payload);
+        console.log('newSchedule_Data_payload', payload);
 
-        navigation.navigate('MainTabs', {newSchedule});
+        // navigation.navigate('MainTabs', {newSchedule});
 
         // navigation.goBack();
         // const payload = {
@@ -215,6 +222,57 @@ export default function ScheduleTimeScreen() {
         //     convertTo24HourFormat(fromTimeString),
         // );
     };
+
+    const SetScheduleApiCall = async payload => {
+        const url = EndPoints.setscheduleTimerData;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+
+                if (responseData?.status === '1') {
+                    navigation.goBack();
+                    // Constants.commonConstant.appUser = responseData?.result;
+                    // Constants.commonConstant.appUserId =
+                    //     responseData?.result?.user_id;
+                    // setAsyncData(
+                    //     Constants.asyncStorageKeys.userData,
+                    //     responseData?.result,
+                    // );
+                    // updateConstantValue(responseData?.result);
+                    // setIsLogin(true);
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
     return (
         <ContainerView>
             <SafeAreaContainerView
@@ -386,6 +444,7 @@ export default function ScheduleTimeScreen() {
                     />
                 </View>
             </SafeAreaContainerView>
+            <CustomLoader isLoading={isLoading} />
             <CustomDateTimePicker
                 date={fromTime}
                 onChange={onChangeFromTime}
