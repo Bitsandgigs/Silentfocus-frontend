@@ -54,17 +54,51 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun setNormal(promise: Promise) = setMode(_root_ide_package_.android.media.AudioManager.RINGER_MODE_NORMAL, promise)
 
-    private fun setMode(mode: kotlin.Int, promise: Promise) {
+    private fun setMode(mode: Int, promise: Promise) {
         try {
-            if (_root_ide_package_.android.os.Build.VERSION.SDK_INT >= _root_ide_package_.android.os.Build.VERSION_CODES.M &&
-                !nm().isNotificationPolicyAccessGranted) {
+            val notificationManager = nm()
+            val audioManager = audio()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted) {
                 promise.reject("ERR_NO_ACCESS", "DND access not granted")
                 return
             }
-            audio().ringerMode = mode
+
+            // Explicitly set interruption filter before changing mode
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                when (mode) {
+                    AudioManager.RINGER_MODE_SILENT -> {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                    }
+                    AudioManager.RINGER_MODE_VIBRATE -> {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                    }
+                    AudioManager.RINGER_MODE_NORMAL -> {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
+                }
+            }
+
+            // Now set the ringer mode
+            audioManager.ringerMode = mode
+
             promise.resolve(true)
-        } catch (e: kotlin.Exception) {
+        } catch (e: Exception) {
             promise.reject("ERR_SET_MODE", e)
         }
     }
+
+//    private fun setMode(mode: kotlin.Int, promise: Promise) {
+//        try {
+//            if (_root_ide_package_.android.os.Build.VERSION.SDK_INT >= _root_ide_package_.android.os.Build.VERSION_CODES.M &&
+//                !nm().isNotificationPolicyAccessGranted) {
+//                promise.reject("ERR_NO_ACCESS", "DND access not granted")
+//                return
+//            }
+//            audio().ringerMode = mode
+//            promise.resolve(true)
+//        } catch (e: kotlin.Exception) {
+//            promise.reject("ERR_SET_MODE", e)
+//        }
+//    }
 }

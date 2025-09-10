@@ -173,10 +173,8 @@ export default function HomeScreen() {
     };
 
     const ensureAccess = async () => {
-        if (Platform.OS !== 'android') {
-            // Alert.alert('Not supported', 'This feature works only on Android.');
-            return false;
-        }
+        if (Platform.OS !== 'android') return false;
+
         const ok = await SilentFocus.hasDndAccess();
         if (!ok) {
             Alert.alert(
@@ -194,6 +192,28 @@ export default function HomeScreen() {
         }
         return true;
     };
+    // const ensureAccess = async () => {
+    //     if (Platform.OS !== 'android') {
+    //         // Alert.alert('Not supported', 'This feature works only on Android.');
+    //         return false;
+    //     }
+    //     const ok = await SilentFocus.hasDndAccess();
+    //     if (!ok) {
+    //         Alert.alert(
+    //             'Permission required',
+    //             'To change ringer mode, grant “Do Not Disturb” access to this app.',
+    //             [
+    //                 {text: 'Cancel', style: 'cancel'},
+    //                 {
+    //                     text: 'Open Settings',
+    //                     onPress: () => SilentFocus.openDndAccessSettings(),
+    //                 },
+    //             ],
+    //         );
+    //         return false;
+    //     }
+    //     return true;
+    // };
 
     useEffect(() => {
         let interval;
@@ -219,17 +239,35 @@ export default function HomeScreen() {
         await BackgroundService.stop();
     };
 
+    // const setPhoneSilent = async () => {
+    //     if (await ensureAccess()) {
+    //         await SilentFocus.setSilent();
+    //     }
+    // };
+
     const setPhoneSilent = async () => {
         if (await ensureAccess()) {
-            await SilentFocus.setSilent();
+            try {
+                await SilentFocus.setSilent(); // will now work even if in vibrate mode
+            } catch (error) {
+                console.error('Failed to set silent mode', error);
+            }
         }
     };
-
     const setPhoneNormal = async () => {
         if (await ensureAccess()) {
-            await SilentFocus.setNormal();
+            try {
+                await SilentFocus.setNormal(); // will force back to ring mode
+            } catch (error) {
+                console.error('Failed to set normal mode', error);
+            }
         }
     };
+    // const setPhoneNormal = async () => {
+    //     if (await ensureAccess()) {
+    //         await SilentFocus.setNormal();
+    //     }
+    // };
 
     const toggleSwitch = async id => {
         const updatedData = arrayEvents.map(item =>
@@ -452,66 +490,83 @@ export default function HomeScreen() {
 
     // Render Component
     const renderCustomScheduleItem = ({item}) => (
-        <View style={styles.containerView}>
-            <View
-                style={[
-                    styles.card,
-                    {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
-                ]}>
-                <View style={styles.cardContent}>
-                    <Image
-                        source={Images.iconClock} // 👈 put your image in assets folder
-                        style={styles.icon}
-                    />
-                    <View style={styles.timeBlock}>
-                        <Text
-                            style={[
-                                styles.timeRange,
-                                {color: isDark ? 'white' : '#1C1C1C'},
-                            ]}>
-                            {convertTo24HourFormat(item.startTime)} -{' '}
-                            {convertTo24HourFormat(item.endTime)}
-                        </Text>
-
-                        <View style={styles.labelBlock}>
+        console.log('item_data_data', item),
+        (
+            <View style={styles.containerView}>
+                <View
+                    style={[
+                        styles.card,
+                        {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
+                    ]}>
+                    <View style={styles.cardContent}>
+                        <Image
+                            source={Images.iconClock} // 👈 put your image in assets folder
+                            style={styles.icon}
+                        />
+                        <View style={styles.timeBlock}>
                             <Text
                                 style={[
-                                    styles.everyday,
-                                    {
-                                        color: isDark
-                                            ? 'rgba(250,250,250,0.45)'
-                                            : '#555',
-                                    },
+                                    styles.timeRange,
+                                    {color: isDark ? 'white' : '#1C1C1C'},
                                 ]}>
-                                {item.days}
+                                {/* {item.from_time - item.to_time} */}
+                                {console.log(
+                                    'yygryggfgggr_start',
+                                    item.startTime,
+                                )}
+                                {console.log('yygryggfgggr_end', item.endTime)}
+                                {console.log(
+                                    'yygryggfgggr_start',
+                                    convertTo24HourFormat(item.startTime),
+                                )}
+                                {console.log(
+                                    'yygryggfgggr_end',
+                                    convertTo24HourFormat(item.endTime),
+                                )}
+                                {convertTo24HourFormat(item.startTime)} -{' '}
+                                {convertTo24HourFormat(item.endTime)}
                             </Text>
 
-                            <View
-                                style={[
-                                    styles.dividerLine,
-                                    {
-                                        backgroundColor: isDark
-                                            ? 'rgba(85, 85, 85, 0.35)'
-                                            : '#D9D9D9',
-                                    },
-                                ]}
-                            />
+                            <View style={styles.labelBlock}>
+                                <Text
+                                    style={[
+                                        styles.everyday,
+                                        {
+                                            color: isDark
+                                                ? 'rgba(250,250,250,0.45)'
+                                                : '#555',
+                                        },
+                                    ]}>
+                                    {item.days}
+                                </Text>
 
-                            <Text style={styles.addSchedule}>
-                                Add Schedule ＋
-                            </Text>
+                                <View
+                                    style={[
+                                        styles.dividerLine,
+                                        {
+                                            backgroundColor: isDark
+                                                ? 'rgba(85, 85, 85, 0.35)'
+                                                : '#D9D9D9',
+                                        },
+                                    ]}
+                                />
+
+                                <Text style={styles.addSchedule}>
+                                    Add Schedule ＋
+                                </Text>
+                            </View>
                         </View>
+                        <Switch
+                            value={item.enabled}
+                            style={styles.toggleWrapper}
+                            onValueChange={() => toggleSwitch(item.id)}
+                            trackColor={{false: '#444', true: '#ff9800'}}
+                            thumbColor={item.enabled ? '#fff' : '#fff'}
+                        />
                     </View>
-                    <Switch
-                        value={item.enabled}
-                        style={styles.toggleWrapper}
-                        onValueChange={() => toggleSwitch(item.id)}
-                        trackColor={{false: '#444', true: '#ff9800'}}
-                        thumbColor={item.enabled ? '#fff' : '#fff'}
-                    />
                 </View>
             </View>
-        </View>
+        )
     );
 
     const renderMissedNotificationItem = ({item}) => (

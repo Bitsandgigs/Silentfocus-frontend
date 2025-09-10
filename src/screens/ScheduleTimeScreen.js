@@ -38,13 +38,13 @@ export default function ScheduleTimeScreen() {
 
     // Array
     const arrDaysOfWeek = [
-        'monday',
-        'tuesday',
-        'wednesday',
-        'thursday',
-        'friday',
-        'saturday',
-        'sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
     ];
 
     // useState
@@ -182,13 +182,29 @@ export default function ScheduleTimeScreen() {
             .map(item => item.day)
             .join(', '); // or format to "Weekdays" / "Everyday" later if needed
 
-        const newSchedule = {
-            id: Date.now().toString(), // unique id
-            start: fromTimeString,
-            end: toTimeString,
-            days: selectedDays || 'Custom',
-            enabled: true,
-        };
+        // const newSchedule = {
+        //     id: Date.now().toString(), // unique id
+        //     start: convertTo24HourFormat(fromTimeString),
+        //     end: convertTo24HourFormat(toTimeString),
+        //     days: selectedDays || 'Custom',
+        //     enabled: true,
+        // };
+
+        // const payload = {
+        //     userId: '4' ? '4' : '',
+        //     from_time: convertTo24HourFormat(fromTimeString)
+        //         ? convert
+        // To24HourFormat(fromTimeString)
+        //         : '',
+        //     to_time: convertTo24HourFormat(toTimeString)
+        //         ? convertTo24HourFormat(toTimeString)
+        //         : '',
+        //     days: selectedDays ? selectedDays : '',
+        // };
+
+        console.log('selectedDays==', selectedDays);
+        console.log('fromTimeString==', fromTimeString);
+        console.log('toTimeString==', toTimeString);
         const payload = {
             userId: '4' ? '4' : '',
             from_time: fromTimeString ? fromTimeString : '',
@@ -221,6 +237,10 @@ export default function ScheduleTimeScreen() {
         //     'fromTimeString_24_hrs_formate',
         //     convertTo24HourFormat(fromTimeString),
         // );
+    };
+
+    const convertTo24HourFormat = time => {
+        return moment(time, ['HH:mm ']).format('h:mm A');
     };
 
     const SetScheduleApiCall = async payload => {

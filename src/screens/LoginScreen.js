@@ -55,6 +55,7 @@ import {
     useBlurOnFulfill,
     useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
+import screens from '../utils/theme/screens';
 
 export default function LoginScreen() {
     // navigation
@@ -592,7 +593,12 @@ export default function LoginScreen() {
                                             Remember me
                                         </Text>
                                     </View>
-                                    <TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() =>
+                                            navigation.navigate(
+                                                screens.ForgotPasswordScreen,
+                                            )
+                                        }>
                                         <Text style={styles.forgotText}>
                                             Forgot password
                                         </Text>

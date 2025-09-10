@@ -12,15 +12,16 @@ const CommonStyle = StyleSheet.create({
     },
     title: {textAlign: 'center', fontSize: 30},
     codeFieldRoot: {
-        marginTop: 32,
+        marginTop: 10,
         marginBottom: 14,
         alignItems: 'center',
+        // backgroundColor: Colors.red,
     },
     cell: {
         width: Responsive.widthPercentageToDP(15),
         height: Responsive.widthPercentageToDP(15),
         borderRadius: 10,
-        backgroundColor: Colors.inputOtpBg,
+        backgroundColor: Colors.textInputBg,
         alignItems: 'center',
         justifyContent: 'center',
         marginHorizontal: 5,

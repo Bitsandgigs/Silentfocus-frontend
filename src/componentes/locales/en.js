@@ -15,4 +15,13 @@ export default {
     SF14: 'To time is greater than from date and time. Please select other time.',
     SF15: 'Select other time',
     SF16: 'Confirm',
+    SF17: 'Lost Password ? No Problem!',
+    SF18: 'Reclaim your access with a few simple steps',
+    SF19: 'Send Otp',
+    SF20: 'Verify OTP',
+    SF21: 'Check your email for the OTP code, Entering the correct OTP will confirm your identity.',
+    SF22: 'Verify OTP',
+    SF23: 'Set a New Password',
+    SF24: 'Must be at least 6 characters long.',
+    SF25: 'Reset Password',
 };

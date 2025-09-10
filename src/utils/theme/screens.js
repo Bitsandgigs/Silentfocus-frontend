@@ -2,6 +2,9 @@ export default {
     // Auth Flow
     LogoScreen: 'LogoScreen',
     LoginScreen: 'LoginScreen',
+    ForgotPasswordScreen: 'ForgotPasswordScreen',
+    VerifyOtpScreen: 'VerifyOtpScreen',
+    ResetPasswordScreen: 'ResetPasswordScreen',
     PermissionScreen: 'PermissionScreen',
     WelcomeScreen1Screen: 'WelcomeScreen1Screen',
     WelcomeScreen2Screen: 'WelcomeScreen2Screen',

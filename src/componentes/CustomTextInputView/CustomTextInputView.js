@@ -13,6 +13,7 @@ import KeyboardManager from 'react-native-keyboard-manager';
 
 export default function CustomTextInputView(props) {
     const {
+        label = '',
         textColor = null,
         placeholder = '',
         value = '',
@@ -51,6 +52,12 @@ export default function CustomTextInputView(props) {
     // Render Component
     return (
         <View style={[styles.containerView, customTextInputStyle]}>
+            {label !== '' && (
+                <>
+                    <Text style={styles.labelText}>{label}</Text>
+                </>
+            )}
+
             <TouchableOpacity
                 activeOpacity={9}
                 onPress={() => {

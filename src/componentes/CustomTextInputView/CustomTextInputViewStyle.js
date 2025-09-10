@@ -1,18 +1,23 @@
-import { StyleSheet } from 'react-native';
+import {StyleSheet} from 'react-native';
 
 // Common Function
-import { height, width } from '../../function/commonFunctions';
-import { Colors } from '../../utils/theme';
-
+import {height, width} from '../../function/commonFunctions';
+import {Colors} from '../../utils/theme';
 
 export const styles = StyleSheet.create({
     containerView: {
         marginVertical: height(2),
-        backgroundColor: Colors.white,
+        // backgroundColor: Colors.white,
     },
     leftIconTouchableOpacity: {
         paddingHorizontal: width(4),
         paddingVertical: height(2),
+    },
+    labelText: {
+        fontSize: width(16),
+        color: Colors.lightBlack,
+        fontWeight: 500,
+        marginVertical: 8,
     },
     leftIcon: {
         width: width(22),
