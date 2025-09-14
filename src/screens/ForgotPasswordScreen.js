@@ -52,9 +52,6 @@ export default function ForgotPasswordScreen() {
     // navigation
     const navigation = useNavigation();
 
-    // useContext
-    const {setIsLogin, updateConstantValue} = useContext(AppContext);
-
     // useState
     const [isLoginData, setIsLoginData] = useState(true);
     const [isShowPassword, setIsShowPassword] = useState(false);
@@ -73,7 +70,6 @@ export default function ForgotPasswordScreen() {
     });
 
     const [loginActiveInputIndex, setLoginActiveInputIndex] = useState(0);
-    const [registerActiveInputIndex, setRegisterActiveInputIndex] = useState(0);
 
     useEffect(() => {
         const type = Platform.select({
@@ -85,9 +81,6 @@ export default function ForgotPasswordScreen() {
 
     // useState
     const [isLoading, setIsLoading] = useState(false);
-
-    // useRef
-    const otpRefs = [useRef(), useRef(), useRef(), useRef()];
 
     // Login
     const loginRefs = Array(2)
@@ -107,21 +100,54 @@ export default function ForgotPasswordScreen() {
         .fill(0)
         .map(() => useRef());
 
-    const handleVerifyaAndRegister = async () => {
-        const payload = {
-            email: values.email ? values.email : '',
-            otp: value ? value : '',
-        };
-        setIsLoading(true);
-        VerifyOtpApiCall(payload);
-    };
+    // Formik and Yup
+    const validationSchema = yup.object().shape({
+        email: yup
+            .string()
+            .test(
+                'valid-email',
+                'Please enter a valid email address.',
+                function (value) {
+                    if (value === undefined) {
+                        return false;
+                    }
+                    return validateEmail(value);
+                },
+            ),
+    });
 
-    const VerifyOtpApiCall = async payload => {
-        const url = EndPoints.verifyOtp;
+    const formik = useFormik({
+        initialValues: {
+            name: '',
+            email: __DEV__ ? 'payalahir2909@gmail.com' : '',
+            password: __DEV__ ? 'Payal@123' : '',
+        },
+
+        validateOnBlur: false,
+        validateOnChange: hasErrors,
+        validateOnMount: false,
+        onSubmit: values => {
+            console.log(values);
+            const payload = {
+                email: values.email ? values.email : '',
+            };
+            setIsLoading(true);
+            ForgotPasswordApiCall(payload);
+        },
+        validationSchema,
+    });
+
+    useEffect(() => {
+        setHasErrors(Object.keys(formik.errors).length > 0);
+    }, [formik.errors]);
+
+    const {handleChange, handleSubmit, values, errors} = formik;
+
+    const ForgotPasswordApiCall = async payload => {
+        const url = EndPoints.forgotPassword;
 
         await APICall('post', payload, url).then(response => {
             setIsLoading(false);
-            console.log('RegisterApiCall', response);
             if (
                 response?.statusCode === Constants.apiStatusCode.success &&
                 response?.data
@@ -129,17 +155,9 @@ export default function ForgotPasswordScreen() {
                 const responseData = response?.data;
 
                 if (responseData?.status === '1') {
-                    Constants.commonConstant.appUser = responseData?.result;
-                    Constants.commonConstant.appUserId =
-                        responseData?.result?.user_id;
-
-                    setAsyncData(
-                        Constants.asyncStorageKeys.userData,
-                        responseData?.result,
-                    );
-                    updateConstantValue(responseData?.result);
-                    setModalVisible(false);
-                    setIsLogin(true);
+                    navigation.navigate(screens.VerifyOtpScreen, {
+                        email: payload.email,
+                    });
                 } else if (responseData?.status === '0') {
                     showAlert(
                         Constants.commonConstant.appName,
@@ -166,65 +184,6 @@ export default function ForgotPasswordScreen() {
                 );
             }
         });
-    };
-    // Formik and Yup
-    const validationSchema = yup.object().shape({
-        email: yup
-            .string()
-            .test(
-                'valid-email',
-                'Please enter a valid email address.',
-                function (value) {
-                    if (value === undefined) {
-                        return false;
-                    }
-                    return validateEmail(value);
-                },
-            ),
-    });
-
-    const formik = useFormik({
-        initialValues: {
-            name: '',
-            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
-            password: __DEV__ ? 'Payal@123' : '',
-        },
-
-        validateOnBlur: false,
-        validateOnChange: hasErrors,
-        validateOnMount: false,
-        onSubmit: values => {
-            console.log(values);
-            navigation.navigate(screens.VerifyOtpScreen);
-            // if (isLoginData) {
-            //     const payload = {
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     LoginApiCall(payload);
-            // } else {
-            //     const payload = {
-            //         username: values.name ? values.name : '',
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     RegisterApiCall(payload);
-            // }
-        },
-        validationSchema,
-    });
-
-    useEffect(() => {
-        setHasErrors(Object.keys(formik.errors).length > 0);
-    }, [formik.errors]);
-
-    const {handleChange, handleSubmit, values, errors} = formik;
-
-    // Function
-    const onPressRightIcon = () => {
-        setIsShowPassword(!isShowPassword);
     };
 
     // Render Component

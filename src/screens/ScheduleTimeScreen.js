@@ -23,7 +23,7 @@ import {height, localize, width} from '../function/commonFunctions';
 import BackIcon from '../assets/svgs/Back';
 import {Colors, Constants, Images, Responsive} from '../utils/theme';
 import CustomDateTimePicker from '../componentes/CustomDateTimePicker/CustomDateTimePicker';
-import {showAlert} from '../function/Alert';
+import {showAlert, showAlertWithOneCallBack} from '../function/Alert';
 import CustomButton from '../componentes/CustomButton/CustomButton';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
@@ -67,8 +67,6 @@ export default function ScheduleTimeScreen() {
     const [toTimeString, setToTimeString] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    const formattedTime = time => moment(time).format('hh:mm A');
-
     // Function
     const onPressGoBack = () => {
         navigation.goBack();
@@ -102,10 +100,6 @@ export default function ScheduleTimeScreen() {
         setIsFromTimeModalVisible(true);
     };
 
-    const closeFromTimeModal = () => {
-        setIsFromTimeModalVisible(false);
-    };
-
     const openToTimeModal = () => {
         setIsToTimeModalVisible(true);
     };
@@ -125,11 +119,10 @@ export default function ScheduleTimeScreen() {
             setFromTime(selectedFromTime);
             setFromTimeString(Time);
         } else {
-            showAlert(
+            showAlertWithOneCallBack(
                 localize('SF13'),
                 localize('SF14'),
                 localize('SF15'),
-                '',
                 () => {
                     setIsFromTimeModalVisible(true);
                 },
@@ -139,24 +132,19 @@ export default function ScheduleTimeScreen() {
 
     const onChangeToTime = selectedToTime => {
         setIsToTimeModalVisible(false);
-        if (fromTimeString === '' && toTimeString === '') {
+        if (fromTimeString === '' && !toTimeString) {
             const Time = moment(selectedToTime).format('hh:mm A');
             setToTime(selectedToTime);
             setToTimeString(Time);
-        } else if (toTimeString === '') {
-            const Time = moment(selectedToTime).format('hh:mm A');
-            setToTime(selectedToTime);
-            setToTimeString(Time);
-        } else if (selectedToTime < toTime) {
+        } else if (selectedToTime > fromTime) {
             const Time = moment(selectedToTime).format('hh:mm A');
             setToTime(selectedToTime);
             setToTimeString(Time);
         } else {
-            showAlert(
+            showAlertWithOneCallBack(
                 localize('SF13'),
-                localize('SF14'),
+                localize('SF26'),
                 localize('SF15'),
-                '',
                 () => {
                     setIsToTimeModalVisible(true);
                 },
@@ -180,97 +168,55 @@ export default function ScheduleTimeScreen() {
         const selectedDays = arraySelectedDays
             .filter(item => item.status)
             .map(item => item.day)
-            .join(', '); // or format to "Weekdays" / "Everyday" later if needed
+            .join(', ');
 
-        // const newSchedule = {
-        //     id: Date.now().toString(), // unique id
-        //     start: convertTo24HourFormat(fromTimeString),
-        //     end: convertTo24HourFormat(toTimeString),
-        //     days: selectedDays || 'Custom',
-        //     enabled: true,
-        // };
-
-        // const payload = {
-        //     userId: '4' ? '4' : '',
-        //     from_time: convertTo24HourFormat(fromTimeString)
-        //         ? convert
-        // To24HourFormat(fromTimeString)
-        //         : '',
-        //     to_time: convertTo24HourFormat(toTimeString)
-        //         ? convertTo24HourFormat(toTimeString)
-        //         : '',
-        //     days: selectedDays ? selectedDays : '',
-        // };
-
-        console.log('selectedDays==', selectedDays);
-        console.log('fromTimeString==', fromTimeString);
-        console.log('toTimeString==', toTimeString);
         const payload = {
-            userId: '4' ? '4' : '',
-            from_time: fromTimeString ? fromTimeString : '',
-            to_time: toTimeString ? toTimeString : '',
+            userId: Constants.commonConstant.appUserId
+                ? Constants.commonConstant.appUserId
+                : '',
+            from_time: fromTimeString
+                ? convertTo24HourFormat(fromTimeString)
+                : '',
+            to_time: toTimeString ? convertTo24HourFormat(toTimeString) : '',
             days: selectedDays ? selectedDays : '',
         };
+        console.log('newSchedule_Data_payload', payload);
 
         setIsLoading(true);
         SetScheduleApiCall(payload);
-        console.log('newSchedule_Data_payload', payload);
-
-        // navigation.navigate('MainTabs', {newSchedule});
-
-        // navigation.goBack();
-        // const payload = {
-        //     email: values.email ? values.email : '',
-        //     otp: value ? value : '',
-        // };
-
-        // setIsLoading(true);
-        // VerifyOtpApiCall(payload);
-        // console.log('fromTimeString', fromTimeString);
-        // console.log('toTimeString', toTimeString);
-        // console.log('arraySelectedDays', arraySelectedDays);
-        // console.log(
-        //     'toTimeString_24_hrs_formate',
-        //     convertTo24HourFormat(toTimeString),
-        // );
-        // console.log(
-        //     'fromTimeString_24_hrs_formate',
-        //     convertTo24HourFormat(fromTimeString),
-        // );
     };
 
     const convertTo24HourFormat = time => {
-        return moment(time, ['HH:mm ']).format('h:mm A');
+        return moment(time, ['h:mm A']).format('HH:mm');
     };
 
     const SetScheduleApiCall = async payload => {
         const url = EndPoints.setscheduleTimerData;
+        console.log('url', url);
 
         await APICall('post', payload, url).then(response => {
             setIsLoading(false);
+            console.log('responseData', response);
             if (
                 response?.statusCode === Constants.apiStatusCode.success &&
                 response?.data
             ) {
                 const responseData = response?.data;
+                console.log('responseData', responseData);
 
                 if (responseData?.status === '1') {
                     navigation.goBack();
-                    // Constants.commonConstant.appUser = responseData?.result;
-                    // Constants.commonConstant.appUserId =
-                    //     responseData?.result?.user_id;
-                    // setAsyncData(
-                    //     Constants.asyncStorageKeys.userData,
-                    //     responseData?.result,
-                    // );
-                    // updateConstantValue(responseData?.result);
-                    // setIsLogin(true);
                 } else if (responseData?.status === '0') {
                     showAlert(
                         Constants.commonConstant.appName,
                         responseData?.message,
                     );
                 }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidData
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.message);
             } else if (
                 response?.statusCode === Constants.apiStatusCode.invalidContent
             ) {

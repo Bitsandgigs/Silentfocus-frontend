@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 // Lib
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute} from '@react-navigation/native';
 import {
     heightPercentageToDP as hp,
     widthPercentageToDP as wp,
@@ -53,6 +53,9 @@ import screens from '../utils/theme/screens';
 export default function VerifyOtpScreen() {
     // navigation
     const navigation = useNavigation();
+
+    const route = useRoute();
+    const {email} = route.params;
 
     // useContext
     const {setIsLogin, updateConstantValue} = useContext(AppContext);
@@ -104,123 +107,58 @@ export default function VerifyOtpScreen() {
         loginRefs[loginActiveInputIndex + 1].current.focus();
     };
 
-    // Register
-    const registerRefs = Array(3)
-        .fill(0)
-        .map(() => useRef());
-
-    const registerHandleFocus = index => () => {
-        setRegisterActiveInputIndex(index);
-    };
-
-    const registerHandleFocusNext = () => {
-        registerRefs[registerActiveInputIndex + 1].current.focus();
-    };
-
     const handleVerifyaAndRegister = async () => {
-        navigation.navigate(screens.ResetPasswordScreen);
         const payload = {
-            email: values.email ? values.email : '',
+            email: email ? email : '',
             otp: value ? value : '',
         };
-        // setIsLoading(true);
-        // VerifyOtpApiCall(payload);
+        setIsLoading(true);
+        VerifyOtpApiCall(payload);
     };
 
-    // Formik and Yup
-    const validationSchema = yup.object().shape({
-        name: yup.string().when([], {
-            is: () => !isLoginData, // only validate name when not login
-            then: schema =>
-                schema
-                    .test(
-                        'valid-name',
-                        'Please enter a valid name.',
-                        function (value) {
-                            if (!value) return false;
-                            return validateName(value);
-                        },
-                    )
-                    .required('Name is required.'),
-            otherwise: schema => schema.notRequired(),
-        }),
-        email: yup
-            .string()
-            .test(
-                'valid-email',
-                'Please enter a valid email address.',
-                function (value) {
-                    if (value === undefined) {
-                        return false;
-                    }
-                    return validateEmail(value);
-                },
-            ),
-        password: yup
-            .string()
-            .test(
-                'min-password',
-                'Password must be 6 characters minimum.',
-                function (value) {
-                    if (value === undefined) {
-                        return false;
-                    }
-                    return value.length >= 6;
-                },
-            )
-            .test(
-                'valid-password',
-                'Please enter a valid password.',
-                function (value) {
-                    if (value === undefined) {
-                        return false;
-                    }
-                    return validatePassword(value);
-                },
-            ),
-    });
+    const VerifyOtpApiCall = async payload => {
+        const url = EndPoints.resetPassword;
 
-    const formik = useFormik({
-        initialValues: {
-            name: '',
-            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
-            password: __DEV__ ? 'Payal@123' : '',
-        },
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
 
-        validateOnBlur: false,
-        validateOnChange: hasErrors,
-        validateOnMount: false,
-        onSubmit: values => {
-            console.log(values);
-            // if (isLoginData) {
-            //     const payload = {
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     LoginApiCall(payload);
-            // } else {
-            //     const payload = {
-            //         username: values.name ? values.name : '',
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     RegisterApiCall(payload);
-            // }
-        },
-        validationSchema,
-    });
-
-    useEffect(() => {
-        setHasErrors(Object.keys(formik.errors).length > 0);
-    }, [formik.errors]);
-
-    const {handleChange, handleSubmit, values, errors} = formik;
-
-    // Function
-    const onPressRightIcon = () => {
-        setIsShowPassword(!isShowPassword);
+                if (responseData?.status === '1') {
+                    // navigation.navigate(screens.ResetPasswordScreen);
+                    navigation.navigate(screens.ResetPasswordScreen, {
+                        email: payload.email,
+                    });
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                    // navigation.navigate(screens.ResetPasswordScreen);
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
     };
 
     // Render Component

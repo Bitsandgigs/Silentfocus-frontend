@@ -341,7 +341,7 @@ export default function LoginScreen() {
     const formik = useFormik({
         initialValues: {
             name: '',
-            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
+            email: __DEV__ ? 'payalahir2909@gmail.com' : '',
             password: __DEV__ ? 'Payal@123' : '',
         },
 

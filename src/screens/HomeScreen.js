@@ -19,7 +19,7 @@ import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useIsFocused, useNavigation} from '@react-navigation/native';
 import ReactNativeCalendarEvents from 'react-native-calendar-events';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundService from 'react-native-background-actions';
@@ -37,18 +37,17 @@ import {height, localize, width} from '../function/commonFunctions';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import {showAlert} from '../function/Alert';
-import clock from '../assets/svgs/clock';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function HomeScreen() {
     const navigation = useNavigation();
-    const route = useRoute();
     const [silentMode, setSilentMode] = useState(false);
     const [timer, setTimer] = useState(900);
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const [isLoading, setIsLoading] = useState(false);
     const [arrayEvents, setArrayEvents] = useState([]);
+    const isFocused = useIsFocused();
     // const [arrayEvents, setArrayEvents] = useState([
     //     {
     //         id: 1,
@@ -106,54 +105,112 @@ export default function HomeScreen() {
     }, [silentMode, timer]);
 
     useEffect(() => {
-        if (route.params?.newSchedule) {
-            console.log('useEffect logs=======', route.params?.newSchedule);
-            // setData(prevData => [...prevData, route.params.newSchedule]);
+        getCalendarEvents();
+    }, []);
+
+    useEffect(() => {
+        if (isFocused) {
+            setIsLoading(true);
+            getScheduleApiCall();
         }
-    }, [route.params?.newSchedule]);
+    }, [isFocused]);
 
-    useEffect(() => {
-        loadEvents();
-    }, []);
-
-    useEffect(() => {
-        const payload = {
-            userId: '4' ? '4' : '',
-        };
-        setIsLoading(true);
-        getScheduleApiCall(payload);
-    }, []);
-
-    const loadEvents = async () => {
+    const getCalendarEvents = async () => {
         const startDate = new Date().toISOString();
         const endDate = new Date(
             new Date().setDate(new Date().getDate() + 7),
         ).toISOString();
 
-        const fetchedEvents = await ReactNativeCalendarEvents.fetchAllEvents(
-            startDate,
-            endDate,
-        );
+        const arrayFetchCalendarEvents =
+            await ReactNativeCalendarEvents.fetchAllEvents(startDate, endDate);
 
-        addCalendarEventsToData(fetchedEvents);
+        if (arrayFetchCalendarEvents && arrayFetchCalendarEvents.length > 0) {
+            const arrayFormattedEvents = arrayFetchCalendarEvents.map(item => {
+                const UserId = Constants.commonConstant.appUserId;
+                const FormTime = item.startDate
+                    ? moment(item.startDate).format('HH:mm')
+                    : '';
+                const ToTime = item.endDate
+                    ? moment(item.endDate).format('HH:mm')
+                    : '';
+                const Days = item.allDay
+                    ? 'All Day'
+                    : moment(item.startDate).format('dddd');
+
+                return {
+                    userId: UserId,
+                    from_time: FormTime,
+                    to_time: ToTime,
+                    days: Days,
+                };
+            });
+
+            console.log('arrayFormattedEvents', arrayFormattedEvents);
+
+            setIsLoading(true);
+            saveCalendarEventsToApi(arrayFormattedEvents);
+        }
     };
 
-    const addCalendarEventsToData = events => {
-        const formattedEvents = events.map(convertEventToSchedule);
-        // setData(prev => [...prev, ...formattedEvents]);
-    };
-
-    const convertEventToSchedule = event => {
-        return {
-            id: event.id, // use calendar event id
-            start: moment(event.startDate).format('hh:mm A'),
-            end: moment(event.endDate).format('hh:mm A'),
-            days: event.allDay
-                ? 'All Day'
-                : moment(event.startDate).format('dddd'),
-            enabled: false, // calendar events are usually active
-            title: event.title,
+    const saveCalendarEventsToApi = async payload => {
+        const url = EndPoints.scheduleTimerCalendarEventData;
+        const header = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
         };
+
+        await APICall('post', payload, url, header).then(response => {
+            setIsLoading(false);
+            console.log('Calendar Event API Response:', response);
+
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                if (response.data.status === '1') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        'Calendar Events Saved Successfully',
+                    );
+                    // navigation.goBack();
+                }
+
+                // else {
+                //     showAlert(
+                //         Constants.commonConstant.appName,
+                //         response.data.message,
+                //     );
+                // }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidData
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    response?.data?.message,
+                );
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    response?.data?.detail,
+                );
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    response?.data?.detail[0]?.msg,
+                );
+            } else {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
     };
 
     const convertTo24HourFormat = time => {
@@ -285,11 +342,11 @@ export default function HomeScreen() {
                 : 'false',
         };
 
-        console.log('get_time_api_call_data', payload);
+        // console.log('get_time_api_call_data', payload);
         setIsLoading(true);
         postTimerScheduleApiCall(payload);
 
-        console.log('updatedData_updatedData', selectedSchedule);
+        // console.log('updatedData_updatedData', selectedSchedule);
 
         if (selectedSchedule?.enabled) {
             setPhoneSilent();
@@ -398,8 +455,11 @@ export default function HomeScreen() {
         navigation.navigate(screens.ScheduleTimeScreen);
     };
 
-    const getScheduleApiCall = async payload => {
+    const getScheduleApiCall = async () => {
         const url = EndPoints.getScheduleTimerData;
+        const payload = {
+            userId: Constants.commonConstant.appUserId,
+        };
 
         await APICall('get', payload, url).then(response => {
             setIsLoading(false);
@@ -409,17 +469,23 @@ export default function HomeScreen() {
             ) {
                 const responseData = response?.data;
                 if (responseData?.status === '1') {
-                    console.log('responseData_Api_Call_get', responseData);
-                    const formattedData = responseData.result.map(
-                        (item, index) => ({
-                            id: item.schedule_id || index, // Use API id or fallback index
-                            startTime: item.from_time || '00:00',
-                            endTime: item.to_time || '00:00',
-                            days: item.selected_days || 'Everyday',
-                            enabled: item.isTimerEnabled === true || false, // Default false if undefined
-                        }),
-                    );
-                    setArrayEvents(formattedData);
+                    if (
+                        responseData?.result &&
+                        responseData?.result?.length > 0
+                    ) {
+                        const formattedData = responseData.result.map(
+                            (item, index) => ({
+                                id: item.schedule_id || index,
+                                startTime: item.from_time || '00:00',
+                                endTime: item.to_time || '00:00',
+                                days: item.selected_days || 'Everyday',
+                                enabled: item.isTimerEnabled === true || false,
+                            }),
+                        );
+                        setArrayEvents(formattedData);
+                    } else {
+                        setArrayEvents([]);
+                    }
                 } else if (responseData?.status === '0') {
                     showAlert(
                         Constants.commonConstant.appName,
@@ -459,7 +525,6 @@ export default function HomeScreen() {
             ) {
                 const responseData = response?.data;
                 if (responseData?.status === '1') {
-                    console.log('responseData_for_switch', responseData);
                 } else if (responseData?.status === '0') {
                     showAlert(
                         Constants.commonConstant.appName,
@@ -490,27 +555,25 @@ export default function HomeScreen() {
 
     // Render Component
     const renderCustomScheduleItem = ({item}) => (
-        console.log('item_data_data', item),
-        (
-            <View style={styles.containerView}>
-                <View
-                    style={[
-                        styles.card,
-                        {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
-                    ]}>
-                    <View style={styles.cardContent}>
-                        <Image
-                            source={Images.iconClock} // 👈 put your image in assets folder
-                            style={styles.icon}
-                        />
-                        <View style={styles.timeBlock}>
-                            <Text
-                                style={[
-                                    styles.timeRange,
-                                    {color: isDark ? 'white' : '#1C1C1C'},
-                                ]}>
-                                {/* {item.from_time - item.to_time} */}
-                                {console.log(
+        <View style={styles.containerView}>
+            <View
+                style={[
+                    styles.card,
+                    {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
+                ]}>
+                <View style={styles.cardContent}>
+                    <Image
+                        source={Images.iconClock} // 👈 put your image in assets folder
+                        style={styles.icon}
+                    />
+                    <View style={styles.timeBlock}>
+                        <Text
+                            style={[
+                                styles.timeRange,
+                                {color: isDark ? 'white' : '#1C1C1C'},
+                            ]}>
+                            {/* {item.from_time - item.to_time} */}
+                            {/* {console.log(
                                     'yygryggfgggr_start',
                                     item.startTime,
                                 )}
@@ -522,51 +585,56 @@ export default function HomeScreen() {
                                 {console.log(
                                     'yygryggfgggr_end',
                                     convertTo24HourFormat(item.endTime),
-                                )}
-                                {convertTo24HourFormat(item.startTime)} -{' '}
-                                {convertTo24HourFormat(item.endTime)}
+                                )} */}
+                            {convertTo24HourFormat(item.startTime)} -{' '}
+                            {convertTo24HourFormat(item.endTime)}
+                        </Text>
+
+                        <View style={styles.labelBlock}>
+                            <Text
+                                style={[
+                                    styles.everyday,
+                                    {
+                                        color: isDark
+                                            ? 'rgba(250,250,250,0.45)'
+                                            : '#555',
+                                    },
+                                ]}>
+                                {/* {item.days} */}
+                                {console.log('item_days', item.days)}
+                                {item.days === 'Everyday'
+                                    ? 'Everyday'
+                                    : item.days
+                                          .map(day => day.slice(0, 3))
+                                          .join(', ')}
                             </Text>
 
-                            <View style={styles.labelBlock}>
-                                <Text
-                                    style={[
-                                        styles.everyday,
-                                        {
-                                            color: isDark
-                                                ? 'rgba(250,250,250,0.45)'
-                                                : '#555',
-                                        },
-                                    ]}>
-                                    {item.days}
-                                </Text>
+                            <View
+                                style={[
+                                    styles.dividerLine,
+                                    {
+                                        backgroundColor: isDark
+                                            ? 'rgba(85, 85, 85, 0.35)'
+                                            : '#D9D9D9',
+                                    },
+                                ]}
+                            />
 
-                                <View
-                                    style={[
-                                        styles.dividerLine,
-                                        {
-                                            backgroundColor: isDark
-                                                ? 'rgba(85, 85, 85, 0.35)'
-                                                : '#D9D9D9',
-                                        },
-                                    ]}
-                                />
-
-                                <Text style={styles.addSchedule}>
-                                    Add Schedule ＋
-                                </Text>
-                            </View>
+                            <Text style={styles.addSchedule}>
+                                Add Schedule ＋
+                            </Text>
                         </View>
-                        <Switch
-                            value={item.enabled}
-                            style={styles.toggleWrapper}
-                            onValueChange={() => toggleSwitch(item.id)}
-                            trackColor={{false: '#444', true: '#ff9800'}}
-                            thumbColor={item.enabled ? '#fff' : '#fff'}
-                        />
                     </View>
+                    <Switch
+                        value={item.enabled}
+                        style={styles.toggleWrapper}
+                        onValueChange={() => toggleSwitch(item.id)}
+                        trackColor={{false: '#444', true: '#ff9800'}}
+                        thumbColor={item.enabled ? '#fff' : '#fff'}
+                    />
                 </View>
             </View>
-        )
+        </View>
     );
 
     const renderMissedNotificationItem = ({item}) => (
@@ -598,6 +666,10 @@ export default function HomeScreen() {
         </View>
     );
 
+    const capitalizeFirstLetter = name => {
+        if (!name) return '';
+        return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    };
     return (
         <ContainerView>
             <SafeAreaContainerView
@@ -627,7 +699,10 @@ export default function HomeScreen() {
                                 styles.greeting,
                                 {color: isDark ? 'white' : '#000000'},
                             ]}>
-                            Hi Shipraaa
+                            {localize('SF1')}{' '}
+                            {capitalizeFirstLetter(
+                                Constants.commonConstant.appUser.username,
+                            )}
                         </Text>
                         <Text
                             style={[

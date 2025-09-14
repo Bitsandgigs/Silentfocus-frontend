@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 // Lib
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute} from '@react-navigation/native';
 import {
     heightPercentageToDP as hp,
     widthPercentageToDP as wp,
@@ -46,10 +46,13 @@ import {
     useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
 import CustomTextInputView from '../componentes/CustomTextInputView/CustomTextInputView';
+import screens from '../utils/theme/screens';
 
 export default function ResetPasswordScreen() {
     // navigation
     const navigation = useNavigation();
+    const route = useRoute();
+    const {email} = route.params;
 
     // useContext
     const {setIsLogin, updateConstantValue} = useContext(AppContext);
@@ -111,87 +114,79 @@ export default function ResetPasswordScreen() {
         setRegisterActiveInputIndex(index);
     };
 
-    // Formik and Yup
     const validationSchema = yup.object().shape({
-        name: yup.string().when([], {
-            is: () => !isLoginData, // only validate name when not login
-            then: schema =>
-                schema
-                    .test(
-                        'valid-name',
-                        'Please enter a valid name.',
-                        function (value) {
-                            if (!value) return false;
-                            return validateName(value);
-                        },
-                    )
-                    .required('Name is required.'),
-            otherwise: schema => schema.notRequired(),
-        }),
-        email: yup
-            .string()
-            .test(
-                'valid-email',
-                'Please enter a valid email address.',
-                function (value) {
-                    if (value === undefined) {
-                        return false;
-                    }
-                    return validateEmail(value);
-                },
-            ),
         password: yup
             .string()
             .test(
                 'min-password',
-                'Password must be 6 characters minimum.',
+                'Password must be at least 6 characters long.',
                 function (value) {
                     if (value === undefined) {
                         return false;
                     }
-                    return value.length >= 6;
+
+                    return value.length >= 6; // Changed to >= to include passwords exactly 8 characters long
                 },
             )
             .test(
                 'valid-password',
-                'Please enter a valid password.',
+                'Your password must be at least 6 characters long and contain at least one digit and one non-digit character.',
                 function (value) {
                     if (value === undefined) {
                         return false;
                     }
+
                     return validatePassword(value);
+                },
+            ),
+        confirmPassword: yup
+            .string()
+            .test(
+                'valid-confirm-password',
+                'Password and Confirm Password do not match.',
+                function (value) {
+                    return (
+                        value === this.parent.password &&
+                        !formik.errors.password
+                    );
                 },
             ),
     });
 
     const formik = useFormik({
         initialValues: {
-            name: '',
-            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
-            password: __DEV__ ? 'Payal@123' : '',
+            password: '',
+            confirmPassword: '',
         },
-
         validateOnBlur: false,
         validateOnChange: hasErrors,
         validateOnMount: false,
         onSubmit: values => {
-            console.log(values);
-            // if (isLoginData) {
-            //     const payload = {
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     LoginApiCall(payload);
-            // } else {
-            //     const payload = {
-            //         username: values.name ? values.name : '',
-            //         email: values.email ? values.email : '',
-            //         password: values.password ? values.password : '',
-            //     };
-            //     setIsLoading(true);
-            //     RegisterApiCall(payload);
-            // }
+            const payload = {
+                email: email ? email : '',
+                new_password: value.password ? value.password : '',
+                confirm_password: value.confirmPassword
+                    ? value.confirmPassword
+                    : '',
+            };
+            setIsLoading(true);
+            ResetPasswordApiCall(payload);
+            // setSubmitting(false);
+            // const payload =
+            //     type === 'email'
+            //         ? {
+            //               email: email_password,
+            //               password: values.password,
+            //               password_confirmation: values.confirmPassword,
+            //               token
+            //           }
+            //         : {
+            //               phone: email_password,
+            //               password: values.password,
+            //               password_confirmation: values.confirmPassword,
+            //               token
+            //           };
+            // ChangePasswordApi(payload);
         },
         validationSchema,
     });
@@ -211,6 +206,46 @@ export default function ResetPasswordScreen() {
         setIsShowConfirmPassword(!isShowConfirmPassword);
     };
 
+    const ResetPasswordApiCall = async payload => {
+        const url = EndPoints.resetNewPassword;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+
+                if (responseData?.status === '1') {
+                    navigation.navigate(screens.LoginScreen);
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
     // Render Component
     return (
         <SafeAreaView style={styles.container}>
@@ -258,14 +293,16 @@ export default function ResetPasswordScreen() {
                                     returnKeyType={'done'}
                                     autoCorrect={false}
                                 />
+
                                 <CustomTextInputView
                                     key={'input_2'}
-                                    placeholder={'Confirm Password'}
                                     label={'Confirm Password'}
-                                    value={values.password}
-                                    onChangeText={handleChange('password')}
+                                    placeholder={'Confirm Password'}
+                                    value={values.confirmPassword}
+                                    onChangeText={handleChange(
+                                        'confirmPassword',
+                                    )}
                                     innerRef={registerRefs[2]}
-                                    onFocus={registerHandleFocus(2)}
                                     secureTextEntry={!isShowConfirmPassword}
                                     leftIcon={Images.iconPassword}
                                     rightIcon={
@@ -274,14 +311,15 @@ export default function ResetPasswordScreen() {
                                             : Images.iconEyeOn
                                     }
                                     onPressRightIcon={onPressRightIconEye}
-                                    errorMessage={errors.password}
+                                    errorMessage={errors.confirmPassword}
                                     isValid={
-                                        !errors.password ||
-                                        values.password === ''
+                                        !errors.confirmPassword &&
+                                        !values.confirmPassword
                                     }
                                     autoCapitalize={'none'}
                                     returnKeyType={'done'}
                                     autoCorrect={false}
+                                    // onFocus={handleFocus(3)}
                                 />
                                 <CustomButton
                                     title={localize('SF25')}
