@@ -56,18 +56,18 @@ export default function ResetPasswordScreen() {
             .string()
             .test(
                 'min-password',
-                'Password must be at least 6 characters long.',
+                'Password must be at least 8 characters long.',
                 function (value) {
                     if (value === undefined) {
                         return false;
                     }
 
-                    return value.length >= 6; // Changed to >= to include passwords exactly 8 characters long
+                    return value.length >= 8; // Changed to >= to include passwords exactly 8 characters long
                 },
             )
             .test(
                 'valid-password',
-                'Your password must be at least 6 characters long and contain at least one digit and one non-digit character.',
+                'Your password must be at least 8 characters long and contain at least one digit and one non-digit character.',
                 function (value) {
                     if (value === undefined) {
                         return false;

@@ -320,12 +320,12 @@ export default function LoginScreen() {
             .string()
             .test(
                 'min-password',
-                'Password must be 6 characters minimum.',
+                'Password must be 8 characters minimum.',
                 function (value) {
                     if (value === undefined) {
                         return false;
                     }
-                    return value.length >= 6;
+                    return value.length >= 8;
                 },
             )
             .test(
