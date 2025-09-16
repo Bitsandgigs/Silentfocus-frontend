@@ -461,6 +461,69 @@ export default function HomeScreen() {
         navigation.navigate(screens.ScheduleTimeScreen);
     };
 
+    const onPressDelete = scheduleId => {
+        console.log('hdfdvdv scheduleId====', scheduleId);
+        const payload = {
+            userId: Constants.commonConstant.appUserId
+                ? Constants.commonConstant.appUserId
+                : '',
+            schedule_id: scheduleId ? scheduleId : '',
+        };
+        setIsLoading(true);
+        ScheduleTimerDataDeleteApiCall(payload);
+    };
+
+    const onPressEdit = () => {};
+
+    const ScheduleTimerDataDeleteApiCall = async payload => {
+        let url = EndPoints.scheduleTimerDataDelete.replace(
+            '{schedule_id}',
+            `${payload.schedule_id}`,
+        );
+
+        url = `${url}?userId=${payload.userId}`;
+
+        await APICall('delete', null, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                if (responseData?.status === '1') {
+                    setArrayEvents(prevEvents =>
+                        prevEvents.filter(
+                            item => item.id !== payload.schedule_id,
+                        ),
+                    );
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
     const getScheduleApiCall = async () => {
         const url = EndPoints.getScheduleTimerData;
         const payload = {
@@ -568,30 +631,13 @@ export default function HomeScreen() {
                     {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
                 ]}>
                 <View style={styles.cardContent}>
-                    <Image
-                        source={Images.iconClock} // 👈 put your image in assets folder
-                        style={styles.icon}
-                    />
+                    <Image source={Images.iconClock} style={styles.icon} />
                     <View style={styles.timeBlock}>
                         <Text
                             style={[
                                 styles.timeRange,
                                 {color: isDark ? 'white' : '#1C1C1C'},
                             ]}>
-                            {/* {item.from_time - item.to_time} */}
-                            {/* {console.log(
-                                    'yygryggfgggr_start',
-                                    item.startTime,
-                                )}
-                                {console.log('yygryggfgggr_end', item.endTime)}
-                                {console.log(
-                                    'yygryggfgggr_start',
-                                    convertTo24HourFormat(item.startTime),
-                                )}
-                                {console.log(
-                                    'yygryggfgggr_end',
-                                    convertTo24HourFormat(item.endTime),
-                                )} */}
                             {convertTo24HourFormat(item.startTime)} -{' '}
                             {convertTo24HourFormat(item.endTime)}
                         </Text>
@@ -626,9 +672,40 @@ export default function HomeScreen() {
                                 ]}
                             />
 
-                            <Text style={styles.addSchedule}>
-                                Add Schedule ＋
-                            </Text>
+                            <View
+                                style={{
+                                    flexDirection: 'row',
+                                    width: wp('65%'),
+                                    justifyContent: 'space-between',
+                                }}>
+                                <Text style={styles.addSchedule}>
+                                    Add Schedule ＋
+                                </Text>
+
+                                <View
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        // marginTop: hp('0.8%'),
+                                    }}>
+                                    <TouchableOpacity
+                                        style={{margin: 5}}
+                                        onPress={onPressEdit}>
+                                        <Text>Edit</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={{margin: 5}}
+                                        onPress={() => {
+                                            console.log(
+                                                'DATA_ID_SCHEDULE',
+                                                item.id,
+                                            );
+                                            onPressDelete(item.id);
+                                        }}>
+                                        <Text>Delete</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
                         </View>
                     </View>
                     <Switch

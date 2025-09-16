@@ -11,6 +11,7 @@ const EndPoints = {
     resetPassword: 'reset-password',
     resetNewPassword: 'create-new-password',
     resendOtp: 'resend-otp',
+    scheduleTimerDataDelete: 'scheduleTimerData/{schedule_id}',
 };
 
 export default EndPoints;
