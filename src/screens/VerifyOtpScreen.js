@@ -1,4 +1,4 @@
-import React, {useState, useRef, useContext, useEffect} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
     View,
     Text,
@@ -15,8 +15,7 @@ import {
     heightPercentageToDP as hp,
     widthPercentageToDP as wp,
 } from 'react-native-responsive-screen';
-import {useFormik} from 'formik';
-import * as yup from 'yup';
+
 import {hasNotch} from 'react-native-device-info';
 
 // Component
@@ -25,23 +24,15 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 // Mics Constants
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
-import {height, localize, setAsyncData} from '../function/commonFunctions';
+import {height, localize} from '../function/commonFunctions';
 import {Colors, Constants} from '../utils/theme';
-import {
-    validateEmail,
-    validateName,
-    validatePassword,
-} from '../function/validation';
-
-// Context Provider
-import {AppContext} from '../utils/context/contextProvider';
 
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import {showAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
-import CommonStyle, {OTPTextInputStyles} from '../utils/theme/commonStyle';
+import CommonStyle from '../utils/theme/commonStyle';
 import {
     CodeField,
     Cursor,
@@ -53,21 +44,14 @@ import screens from '../utils/theme/screens';
 export default function VerifyOtpScreen() {
     // navigation
     const navigation = useNavigation();
-
     const route = useRoute();
     const {email} = route.params;
 
-    // useContext
-    const {setIsLogin, updateConstantValue} = useContext(AppContext);
-
     // useState
-    const [isLoginData, setIsLoginData] = useState(true);
-    const [isShowPassword, setIsShowPassword] = useState(false);
-    const [rememberMe, setRememberMe] = useState(false);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [hasErrors, setHasErrors] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [isError, setIsError] = useState(false);
     const [value, setValue] = useState('');
+    const [seconds, setSeconds] = useState(60);
     const CELL_COUNT = 4;
 
     const [autoCompleteType, setAutoCompleteType] = useState();
@@ -77,8 +61,18 @@ export default function VerifyOtpScreen() {
         setValue,
     });
 
-    const [loginActiveInputIndex, setLoginActiveInputIndex] = useState(0);
-    const [registerActiveInputIndex, setRegisterActiveInputIndex] = useState(0);
+    // useEffect
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (seconds > 0) {
+                setSeconds(seconds - 1);
+            } else {
+                clearInterval(interval);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [seconds]);
 
     useEffect(() => {
         const type = Platform.select({
@@ -88,25 +82,6 @@ export default function VerifyOtpScreen() {
         setAutoCompleteType(type);
     }, []);
 
-    // useState
-    const [isLoading, setIsLoading] = useState(false);
-
-    // useRef
-    const otpRefs = [useRef(), useRef(), useRef(), useRef()];
-
-    // Login
-    const loginRefs = Array(2)
-        .fill(0)
-        .map(() => useRef());
-
-    const loginHandleFocus = index => () => {
-        setLoginActiveInputIndex(index);
-    };
-
-    const loginHandleFocusNext = () => {
-        loginRefs[loginActiveInputIndex + 1].current.focus();
-    };
-
     const handleVerifyaAndRegister = async () => {
         const payload = {
             email: email ? email : '',
@@ -114,6 +89,13 @@ export default function VerifyOtpScreen() {
         };
         setIsLoading(true);
         VerifyOtpApiCall(payload);
+    };
+
+    const handleResendOtp = async () => {
+        const payload = {
+            email: email ? email : '',
+        };
+        ResendOtpApiCall(payload);
     };
 
     const VerifyOtpApiCall = async payload => {
@@ -128,7 +110,6 @@ export default function VerifyOtpScreen() {
                 const responseData = response?.data;
 
                 if (responseData?.status === '1') {
-                    // navigation.navigate(screens.ResetPasswordScreen);
                     navigation.navigate(screens.ResetPasswordScreen, {
                         email: payload.email,
                     });
@@ -137,7 +118,49 @@ export default function VerifyOtpScreen() {
                         Constants.commonConstant.appName,
                         responseData?.message,
                     );
-                    // navigation.navigate(screens.ResetPasswordScreen);
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
+    const ResendOtpApiCall = async payload => {
+        const url = EndPoints.resendOtp;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+
+                if (responseData?.status === '1') {
+                    // navigation.navigate(screens.ResetPasswordScreen, {
+                    //     email: payload.email,
+                    // });
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
                 }
             } else if (
                 response?.statusCode === Constants.apiStatusCode.invalidContent
@@ -232,6 +255,54 @@ export default function VerifyOtpScreen() {
                                     }}
                                 />
 
+                                {seconds !== 0 ? (
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            margin: 8,
+                                            padding: 8,
+                                        }}>
+                                        <Text
+                                            style={{
+                                                color: Colors.themeColor,
+                                                fontSize: 14,
+                                                fontWeight: 'bold',
+                                            }}>
+                                            {'Send again'}
+                                        </Text>
+                                        <Text
+                                            style={{
+                                                color: Colors.themeColor,
+                                                fontSize: 14,
+                                                fontWeight: 'bold',
+                                            }}>
+                                            {' '}
+                                            {'('}
+                                            {seconds} {'sec'}
+                                            {')'}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <TouchableOpacity
+                                        onPress={() => handleResendOtp()}
+                                        style={{
+                                            margin: 8,
+                                            padding: 10,
+                                            alignSelf: 'center',
+                                        }}>
+                                        <Text
+                                            style={{
+                                                color: Colors.themeColor,
+                                                fontSize: '15',
+                                                fontWeight: 'bold',
+                                            }}>
+                                            {localize('SF27')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+
                                 <CustomButton
                                     title={localize('SF22')}
                                     onPress={handleVerifyaAndRegister}
@@ -279,20 +350,11 @@ const styles = StyleSheet.create({
         marginBottom: hasNotch() ? height(0) : height(30),
     },
     cardWrapper: {
-        // borderRadius: 42,
         paddingHorizontal: 24,
         paddingTop: 24,
         height: hp(35),
         paddingBottom: 36,
-        // backgroundColor: '#fff',
-        // shadowColor: '#000',
-        // shadowOffset: {width: 0, height: -4},
-        // shadowOpacity: 0.1,
-        // shadowRadius: 10,
-        // elevation: 10,
         marginHorizontal: 6,
-        // borderWidth: 1,
-        // borderColor: '#16151640',
     },
     tabRow: {
         flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, {useState, useRef, useContext, useEffect} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
     View,
     Text,
@@ -6,7 +6,6 @@ import {
     StyleSheet,
     ScrollView,
     SafeAreaView,
-    Platform,
 } from 'react-native';
 
 // Lib
@@ -25,26 +24,15 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 // Mics Constants
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
-import {height, localize, setAsyncData} from '../function/commonFunctions';
+import {height, localize} from '../function/commonFunctions';
 import {Colors, Constants, Images} from '../utils/theme';
-import {
-    validateEmail,
-    validateName,
-    validatePassword,
-} from '../function/validation';
-
-// Context Provider
-import {AppContext} from '../utils/context/contextProvider';
+import {validatePassword} from '../function/validation';
 
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import {showAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
-import {
-    useBlurOnFulfill,
-    useClearByFocusCell,
-} from 'react-native-confirmation-code-field';
 import CustomTextInputView from '../componentes/CustomTextInputView/CustomTextInputView';
 import screens from '../utils/theme/screens';
 
@@ -54,65 +42,14 @@ export default function ResetPasswordScreen() {
     const route = useRoute();
     const {email} = route.params;
 
-    // useContext
-    const {setIsLogin, updateConstantValue} = useContext(AppContext);
-
     // useState
-    const [isLoginData, setIsLoginData] = useState(true);
     const [isShowPassword, setIsShowPassword] = useState(false);
     const [isShowConfirmPassword, setIsShowConfirmPassword] = useState(false);
 
-    const [modalVisible, setModalVisible] = useState(false);
     const [hasErrors, setHasErrors] = useState(false);
-    const [isError, setIsError] = useState(false);
-    const [value, setValue] = useState('');
-    const CELL_COUNT = 4;
-
-    const [autoCompleteType, setAutoCompleteType] = useState();
-    const phoneRef = useBlurOnFulfill({value, cellCount: CELL_COUNT});
-    const [props, getCellOnLayoutHandler] = useClearByFocusCell({
-        value,
-        setValue,
-    });
-
-    const [loginActiveInputIndex, setLoginActiveInputIndex] = useState(0);
-    const [registerActiveInputIndex, setRegisterActiveInputIndex] = useState(0);
-
-    useEffect(() => {
-        const type = Platform.select({
-            android: 'sms-otp',
-            default: 'one-time-code',
-        });
-        setAutoCompleteType(type);
-    }, []);
 
     // useState
     const [isLoading, setIsLoading] = useState(false);
-
-    // useRef
-    const otpRefs = [useRef(), useRef(), useRef(), useRef()];
-
-    // Login
-    const loginRefs = Array(2)
-        .fill(0)
-        .map(() => useRef());
-
-    const loginHandleFocus = index => () => {
-        setLoginActiveInputIndex(index);
-    };
-
-    const loginHandleFocusNext = () => {
-        loginRefs[loginActiveInputIndex + 1].current.focus();
-    };
-
-    // Register
-    const registerRefs = Array(3)
-        .fill(0)
-        .map(() => useRef());
-
-    const registerHandleFocus = index => () => {
-        setRegisterActiveInputIndex(index);
-    };
 
     const validationSchema = yup.object().shape({
         password: yup
@@ -164,29 +101,13 @@ export default function ResetPasswordScreen() {
         onSubmit: values => {
             const payload = {
                 email: email ? email : '',
-                new_password: value.password ? value.password : '',
-                confirm_password: value.confirmPassword
-                    ? value.confirmPassword
+                new_password: values.password ? values.password : '',
+                confirm_password: values.confirmPassword
+                    ? values.confirmPassword
                     : '',
             };
             setIsLoading(true);
             ResetPasswordApiCall(payload);
-            // setSubmitting(false);
-            // const payload =
-            //     type === 'email'
-            //         ? {
-            //               email: email_password,
-            //               password: values.password,
-            //               password_confirmation: values.confirmPassword,
-            //               token
-            //           }
-            //         : {
-            //               phone: email_password,
-            //               password: values.password,
-            //               password_confirmation: values.confirmPassword,
-            //               token
-            //           };
-            // ChangePasswordApi(payload);
         },
         validationSchema,
     });
@@ -274,8 +195,6 @@ export default function ResetPasswordScreen() {
                                     label={'Password'}
                                     value={values.password}
                                     onChangeText={handleChange('password')}
-                                    innerRef={registerRefs[2]}
-                                    onFocus={registerHandleFocus(2)}
                                     secureTextEntry={!isShowPassword}
                                     leftIcon={Images.iconPassword}
                                     rightIcon={
@@ -302,7 +221,6 @@ export default function ResetPasswordScreen() {
                                     onChangeText={handleChange(
                                         'confirmPassword',
                                     )}
-                                    innerRef={registerRefs[2]}
                                     secureTextEntry={!isShowConfirmPassword}
                                     leftIcon={Images.iconPassword}
                                     rightIcon={
@@ -313,20 +231,19 @@ export default function ResetPasswordScreen() {
                                     onPressRightIcon={onPressRightIconEye}
                                     errorMessage={errors.confirmPassword}
                                     isValid={
-                                        !errors.confirmPassword &&
-                                        !values.confirmPassword
+                                        !errors.confirmPassword ||
+                                        values.confirmPassword === ''
                                     }
                                     autoCapitalize={'none'}
                                     returnKeyType={'done'}
                                     autoCorrect={false}
-                                    // onFocus={handleFocus(3)}
                                 />
                                 <CustomButton
                                     title={localize('SF25')}
                                     onPress={handleSubmit}
                                     disabled={
-                                        values.email === '' ||
-                                        values.password === ''
+                                        values.password === '' ||
+                                        values.confirmPassword === ''
                                     }
                                 />
                             </View>

@@ -56,7 +56,7 @@ const checkCalenderPermission = async () => {
     const permission =
         Platform.OS === 'ios'
             ? PERMISSIONS.IOS.CALENDARS
-            : PERMISSIONS.ANDROID.WRITE_CALENDAR;
+            : PERMISSIONS.ANDROID.READ_CALENDAR;
 
     const result = await check(permission);
 
@@ -76,7 +76,7 @@ const requestCalenderPermission = async handleCalender => {
             openSettings().catch(() => {});
         }
     } else if (Platform.OS === 'android') {
-        const result = await request(PERMISSIONS.ANDROID.WRITE_CALENDAR);
+        const result = await request(PERMISSIONS.ANDROID.READ_CALENDAR);
         if (result === RESULTS.GRANTED) {
             handleCalender();
         } else {

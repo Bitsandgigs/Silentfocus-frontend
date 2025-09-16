@@ -25,4 +25,5 @@ export default {
     SF24: 'Must be at least 6 characters long.',
     SF25: 'Reset Password',
     SF26: `'To' time should be later than 'From' time.`,
+    SF27: 'RESEND OTP',
 };

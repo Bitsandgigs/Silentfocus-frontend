@@ -10,6 +10,7 @@ const EndPoints = {
     forgotPassword: 'forgot-password',
     resetPassword: 'reset-password',
     resetNewPassword: 'create-new-password',
+    resendOtp: 'resend-otp',
 };
 
 export default EndPoints;

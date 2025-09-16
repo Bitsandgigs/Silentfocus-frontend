@@ -31,7 +31,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 // Mics Constants
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
-import {height, setAsyncData} from '../function/commonFunctions';
+import {height, localize, setAsyncData} from '../function/commonFunctions';
 import {Colors, Constants, Images} from '../utils/theme';
 import {
     validateEmail,
@@ -123,6 +123,8 @@ export default function LoginScreen() {
     const registerHandleFocusNext = () => {
         registerRefs[registerActiveInputIndex + 1].current.focus();
     };
+
+    const handleResendOtp = async () => {};
 
     const handleVerifyaAndRegister = async () => {
         const payload = {
@@ -341,7 +343,7 @@ export default function LoginScreen() {
     const formik = useFormik({
         initialValues: {
             name: '',
-            email: __DEV__ ? 'payalahir2909@gmail.com' : '',
+            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
             password: __DEV__ ? 'Payal@123' : '',
         },
 
@@ -741,6 +743,23 @@ export default function LoginScreen() {
                                 );
                             }}
                         />
+
+                        <TouchableOpacity
+                            onPress={() => handleResendOtp()}
+                            style={{
+                                margin: 8,
+                                padding: 8,
+                            }}>
+                            <Text
+                                style={{
+                                    color: Colors.themeColor,
+                                    // fontSize: '15',
+                                    fontWeight: 'bold',
+                                }}>
+                                {localize('SF27')}
+                            </Text>
+                        </TouchableOpacity>
+
                         <CustomButton
                             title={'Verify and Register'}
                             onPress={handleVerifyaAndRegister}

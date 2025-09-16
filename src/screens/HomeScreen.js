@@ -116,6 +116,7 @@ export default function HomeScreen() {
     }, [isFocused]);
 
     const getCalendarEvents = async () => {
+        console.log('calendar_event', 'calendar_event------');
         const startDate = new Date().toISOString();
         const endDate = new Date(
             new Date().setDate(new Date().getDate() + 7),
@@ -123,6 +124,11 @@ export default function HomeScreen() {
 
         const arrayFetchCalendarEvents =
             await ReactNativeCalendarEvents.fetchAllEvents(startDate, endDate);
+
+        console.log(
+            'arrayFetchCalendarEvents_________',
+            arrayFetchCalendarEvents.length,
+        );
 
         if (arrayFetchCalendarEvents && arrayFetchCalendarEvents.length > 0) {
             const arrayFormattedEvents = arrayFetchCalendarEvents.map(item => {
