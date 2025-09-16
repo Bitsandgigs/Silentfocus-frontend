@@ -191,7 +191,7 @@ const PermissionScreen = () => {
                         <View style={styles.textBlock}>
                             <Text
                                 style={[styles.cardTitle, {color: textColor}]}>
-                                Access Your calendar
+                                Access Your Calendar
                             </Text>
                             <Text
                                 style={[
