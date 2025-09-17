@@ -13,6 +13,7 @@ const EndPoints = {
     resendOtp: 'resend-otp',
     scheduleTimerDataDelete: 'scheduleTimerData/{schedule_id}',
     logOut: '/logout',
+    EditScheduleTimerData: 'scheduleTimerData/{schedule_id}',
 };
 
 export default EndPoints;

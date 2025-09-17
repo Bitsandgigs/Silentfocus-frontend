@@ -16,6 +16,7 @@ export default {
     SupportAgentScreen: 'SupportAgentScreen',
     ActivityScreen: 'ActivityCenterScreen',
     ScheduleTimeScreen: 'ScheduleTimeScreen',
+    EditScheduleTimeScreen: 'EditScheduleTimeScreen',
 
     // Profile Flow
     ProfileScreen: 'ProfileScreen',
