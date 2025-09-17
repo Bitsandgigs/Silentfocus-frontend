@@ -115,6 +115,8 @@ export default function HomeScreen() {
         }
     }, [isFocused]);
 
+    // Check saved timer state when the screen comes into focus
+
     const getCalendarEvents = async () => {
         console.log('calendar_event', 'calendar_event------');
         const startDate = new Date().toISOString();
@@ -434,7 +436,11 @@ export default function HomeScreen() {
         ScheduleTimerDataDeleteApiCall(payload);
     };
 
-    const onPressEdit = () => {};
+    const onPressEdit = item => {
+        navigation.navigate(screens.EditScheduleTimeScreen, {
+            scheduleData: item,
+        });
+    };
 
     const ScheduleTimerDataDeleteApiCall = async payload => {
         let url = EndPoints.scheduleTimerDataDelete.replace(
@@ -509,7 +515,8 @@ export default function HomeScreen() {
                                 startTime: item.from_time || '00:00',
                                 endTime: item.to_time || '00:00',
                                 days: item.selected_days || 'Everyday',
-                                enabled: false,
+                                // enabled: false,
+                                enabled: item.isTimerEnabled === true || false,
                             }),
                         );
 
@@ -659,7 +666,7 @@ export default function HomeScreen() {
                                     }}>
                                     <TouchableOpacity
                                         style={{margin: 5}}
-                                        onPress={onPressEdit}>
+                                        onPress={() => onPressEdit(item)}>
                                         <Text style={{color: '#D6721E'}}>
                                             Edit
                                         </Text>
@@ -765,7 +772,7 @@ export default function HomeScreen() {
                         </Text>
 
                         <TouchableOpacity
-                            onPress={toggleSilentMode}
+                            // onPress={toggleSilentMode}
                             style={styles.silentButtonWrapper}>
                             <ModernSilentButton
                                 silentMode={silentMode}

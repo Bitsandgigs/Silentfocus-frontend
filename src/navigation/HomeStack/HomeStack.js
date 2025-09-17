@@ -11,6 +11,7 @@ import {createStackNavigator} from '@react-navigation/stack';
 
 import MainTabs from '../../MainTabs';
 import ScheduleTimeScreen from '../../screens/ScheduleTimeScreen';
+import EditScheduleTimeScreen from '../../screens/EditScheduleTimeScreen';
 import screens from '../../utils/theme/screens';
 
 export default function HomeStack() {
@@ -28,6 +29,11 @@ export default function HomeStack() {
             <HomeStackNavigator.Screen
                 name={screens.ScheduleTimeScreen}
                 component={ScheduleTimeScreen}
+                options={{headerShown: false}}
+            />
+            <HomeStackNavigator.Screen
+                name={screens.EditScheduleTimeScreen}
+                component={EditScheduleTimeScreen}
                 options={{headerShown: false}}
             />
         </HomeStackNavigator.Navigator>
