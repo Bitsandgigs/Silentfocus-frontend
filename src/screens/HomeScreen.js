@@ -326,11 +326,6 @@ export default function HomeScreen() {
             }
         }
     };
-    // const setPhoneNormal = async () => {
-    //     if (await ensureAccess()) {
-    //         await SilentFocus.setNormal();
-    //     }
-    // };
 
     const toggleSwitch = async id => {
         const updatedData = arrayEvents.map(item =>
@@ -348,17 +343,16 @@ export default function HomeScreen() {
                 : 'false',
         };
 
-        // console.log('get_time_api_call_data', payload);
         setIsLoading(true);
         postTimerScheduleApiCall(payload);
-
-        // console.log('updatedData_updatedData', selectedSchedule);
 
         if (selectedSchedule?.enabled) {
             setPhoneSilent();
             setSilentMode(true);
             setTimer(900);
             setRunning(true);
+
+            console.log('This calll =====');
 
             BackgroundService.start(backgroundTask, {
                 taskName: 'SilentTimer',
@@ -376,32 +370,25 @@ export default function HomeScreen() {
         }
     };
 
-    const getTimestamp = timeStr => {
-        const [h, m] = timeStr.split(':').map(Number);
-        const now = new Date();
-        now.setHours(h, m, 0, 0);
-        return now.getTime();
-    };
-
-    const formatTime = ms => {
-        let totalSec = Math.floor(ms / 1000);
-        let h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
-        let m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
-        let s = String(totalSec % 60).padStart(2, '0');
+    const formatTime = sec => {
+        let h = String(Math.floor(sec / 3600)).padStart(2, '0');
+        let m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+        let s = String(sec % 60).padStart(2, '0');
         return `${h}:${m}:${s}`;
     };
 
-    // const getEnabledEvent = (schedule) => {
-    //     console.log('arrayEvents =====', arrayEvents);
-    //     return arrayEvents.find(ev => ev.enabled === true);
-    // };
+    const convertTimeToTimestamp = timeString => {
+        const today = moment().format('YYYY-MM-DD');
+        const dateTime = moment(`${today} ${timeString}`, 'YYYY-MM-DD HH:mm');
+        return dateTime.unix();
+    };
 
     const checkAndRunTimer = async schedule => {
         if (arrayEvents && arrayEvents.length > 0) {
             if (schedule) {
-                const start = getTimestamp(schedule.startTime);
-                const end = getTimestamp(schedule.endTime);
-                const now = Date.now();
+                const start = convertTimeToTimestamp(schedule.startTime);
+                const end = convertTimeToTimestamp(schedule.endTime);
+                const now = moment().unix();
 
                 if (now >= start && now <= end) {
                     setRunning(true);
@@ -412,6 +399,7 @@ export default function HomeScreen() {
                         JSON.stringify({start, end}),
                     );
                 } else {
+                    console.log('Else call');
                     setRunning(false);
                     setTimeLeft('00:00:00');
                     await AsyncStorage.removeItem('timer_state');
@@ -424,45 +412,18 @@ export default function HomeScreen() {
         }
     };
 
-    const restoreState = async () => {
-        const saved = await AsyncStorage.getItem('timer_state');
-        if (saved) {
-            const {start, end} = JSON.parse(saved);
-            if (Date.now() >= start && Date.now() <= end) {
-                setRunning(true);
-                const remaining = end - Date.now();
-                setTimeLeft(formatTime(remaining));
-            }
-        }
-    };
-
     const backgroundTask = async ({delay, schedule}) => {
         for (;;) {
             await new Promise(r => setTimeout(r, delay));
             await checkAndRunTimer(schedule);
         }
     };
-    // useEffect(() => {
-    //     restoreState();
-
-    //     BackgroundService.start(backgroundTask, {
-    //         taskName: 'SilentTimer',
-    //         taskTitle: 'Silent Timer Running',
-    //         taskDesc: 'Tracking scheduled silent mode timer',
-    //         taskIcon: {name: 'ic_launcher', type: 'mipmap'},
-    //         parameters: {delay: 1000},
-    //         foregroundServiceType: 'dataSync',
-    //     });
-
-    //     return () => BackgroundService.stop();
-    // }, []);
 
     const onPressAddNewSchedule = () => {
         navigation.navigate(screens.ScheduleTimeScreen);
     };
 
     const onPressDelete = scheduleId => {
-        console.log('hdfdvdv scheduleId====', scheduleId);
         const payload = {
             userId: Constants.commonConstant.appUserId
                 ? Constants.commonConstant.appUserId
@@ -548,9 +509,20 @@ export default function HomeScreen() {
                                 startTime: item.from_time || '00:00',
                                 endTime: item.to_time || '00:00',
                                 days: item.selected_days || 'Everyday',
-                                enabled: item.isTimerEnabled === true || false,
+                                enabled: false,
                             }),
                         );
+
+                        // const formattedData = responseData.result.map(
+                        //     (item, index) => ({
+                        //         id: 1,
+                        //         startTime: '12:12 AM',
+                        //         endTime: '01:00 AM',
+                        //         days: 'Everyday',
+                        //         enabled: false,
+                        //     }),
+                        // );
+
                         setArrayEvents(formattedData);
                     } else {
                         setArrayEvents([]);
@@ -652,8 +624,6 @@ export default function HomeScreen() {
                                             : '#555',
                                     },
                                 ]}>
-                                {/* {item.days} */}
-                                {console.log('item_days', item.days)}
                                 {item.days === 'Everyday'
                                     ? 'Everyday'
                                     : item.days
@@ -686,23 +656,22 @@ export default function HomeScreen() {
                                     style={{
                                         flexDirection: 'row',
                                         alignItems: 'center',
-                                        // marginTop: hp('0.8%'),
                                     }}>
                                     <TouchableOpacity
                                         style={{margin: 5}}
                                         onPress={onPressEdit}>
-                                        <Text>Edit</Text>
+                                        <Text style={{color: '#D6721E'}}>
+                                            Edit
+                                        </Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={{margin: 5}}
                                         onPress={() => {
-                                            console.log(
-                                                'DATA_ID_SCHEDULE',
-                                                item.id,
-                                            );
                                             onPressDelete(item.id);
                                         }}>
-                                        <Text>Delete</Text>
+                                        <Text style={{color: '#D6721E'}}>
+                                            Delete
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
