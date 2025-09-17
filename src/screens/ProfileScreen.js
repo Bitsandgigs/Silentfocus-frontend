@@ -19,6 +19,12 @@ import {
     heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import {Constants} from '../utils/theme';
+import {showAlert} from '../function/Alert';
+import EndPoints from '../utils/api/endpoints';
+import APICall from '../utils/api/api';
+import screens from '../utils/theme/screens';
+import CustomLoader from '../componentes/CustomLoader/CustomLoader';
+import {clearLocalStorage} from '../function/commonFunctions';
 
 const calendarOptions = ['Google Calendar', 'Outlook Calendar'];
 
@@ -29,6 +35,7 @@ const ProfileScreen = () => {
 
     const [phoneNumber, setPhoneNumber] = useState('');
     const [isEditingPhone, setIsEditingPhone] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     const phoneInputRef = useRef(null);
 
@@ -51,6 +58,57 @@ const ProfileScreen = () => {
     const handleDisconnectCalendar = () => {
         setIsCalendarSynced(false);
         setCalendarProvider(null);
+    };
+
+    const onPressLogOut = () => {
+        const payload = {
+            user_id: Constants.commonConstant.appUserId
+                ? Constants.commonConstant.appUserId
+                : '',
+        };
+        setIsLoading(true);
+        LogOutApiCall(payload);
+    };
+
+    const LogOutApiCall = async payload => {
+        const url = EndPoints.logOut;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+
+                if (responseData?.status === '1') {
+                    clearLocalStorage();
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
     };
 
     return (
@@ -211,7 +269,7 @@ const ProfileScreen = () => {
                 <View style={styles.logoutContainer}>
                     <TouchableOpacity
                         activeOpacity={0.9}
-                        onPress={() => navigation.navigate('Logo')}>
+                        onPress={() => onPressLogOut()}>
                         <LinearGradient
                             colors={['#B87333', '#B06E31', '#523317']}
                             start={{x: 0, y: 0.5}}
@@ -248,6 +306,7 @@ const ProfileScreen = () => {
                     </Pressable>
                 </Modal>
             </ScrollView>
+            <CustomLoader isLoading={isLoading} />
         </SafeAreaView>
     );
 };
