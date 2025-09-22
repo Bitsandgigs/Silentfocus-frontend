@@ -42,12 +42,14 @@ import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 export default function HomeScreen() {
     const navigation = useNavigation();
     const [silentMode, setSilentMode] = useState(false);
-    const [timer, setTimer] = useState(900);
+    const [timer, setTimer] = useState(0);
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const [isLoading, setIsLoading] = useState(false);
     const [arrayEvents, setArrayEvents] = useState([]);
     const isFocused = useIsFocused();
+    const [activeScheduleId, setActiveScheduleId] = useState(null);
+
     // const [arrayEvents, setArrayEvents] = useState([
     //     {
     //         id: 1,
@@ -115,7 +117,169 @@ export default function HomeScreen() {
         }
     }, [isFocused]);
 
-    // Check saved timer state when the screen comes into focus
+    useEffect(() => {
+        if (arrayEvents.length > 0) {
+            restoreTimerState();
+        }
+    }, [arrayEvents]);
+
+    const restoreTimerState = async () => {
+        try {
+            console.log('restoreTimerState started');
+
+            const savedTimer = await AsyncStorage.getItem('timer_state');
+            console.log('restoreTimerState -> savedTimer value:', savedTimer);
+
+            if (!savedTimer) {
+                console.log('No saved timer found');
+                setSilentMode(false);
+                setRunning(false);
+                setTimer(0);
+                return;
+            }
+
+            const {start, end, scheduleId, isEnabled} = JSON.parse(savedTimer);
+            const now = moment().unix();
+
+            console.log(
+                'Now:',
+                now,
+                'Start:',
+                start,
+                'End:',
+                end,
+                'ScheduleId:',
+                scheduleId,
+                'isEnabled:',
+                isEnabled,
+            );
+
+            // ❌ If saved state shows schedule was disabled, don't run the timer
+            if (!isEnabled) {
+                console.log('Timer not restored because switch is OFF.');
+                await AsyncStorage.removeItem('timer_state'); // clear old state
+                setSilentMode(false);
+                setRunning(false);
+                setTimer(0);
+                return;
+            }
+
+            // ✅ Check schedule exists and is still enabled
+            const selectedSchedule = arrayEvents.find(
+                item => String(item.id) === String(scheduleId),
+            );
+
+            if (!selectedSchedule || !selectedSchedule.enabled) {
+                console.log('No enabled schedule found for this timer.');
+                setSilentMode(false);
+                setRunning(false);
+                setTimer(0);
+                await AsyncStorage.removeItem('timer_state');
+                return;
+            }
+
+            // ✅ Resume timer only if switch is ON and current time is between start & end
+            if (now >= start && now < end) {
+                const remaining = end - now;
+                console.log('Resuming timer, remaining seconds:', remaining);
+
+                setSilentMode(true);
+                setRunning(true);
+                setTimer(remaining);
+                setActiveScheduleId(scheduleId);
+                BackgroundService.start(backgroundTask, {
+                    taskName: 'SilentTimer',
+                    taskTitle: 'Silent Timer Running',
+                    taskDesc: 'Tracking scheduled silent mode timer',
+                    taskIcon: {name: 'ic_launcher', type: 'mipmap'},
+                    parameters: {delay: 1000, schedule: selectedSchedule},
+                    foregroundServiceType: 'dataSync',
+                });
+            } else {
+                console.log(
+                    'Timer already expired or not started yet, clearing saved data',
+                );
+                await AsyncStorage.removeItem('timer_state');
+                setSilentMode(false);
+                setRunning(false);
+                setTimer(0);
+            }
+        } catch (error) {
+            console.error('Failed to restore timer state:', error);
+        }
+    };
+
+    // const restoreTimerState = async () => {
+    //     try {
+    //         console.log('restoreTimerState started');
+
+    //         const savedTimer = await AsyncStorage.getItem('timer_state');
+    //         console.log('restoreTimerState -> savedTimer value:', savedTimer);
+
+    //         if (!savedTimer) {
+    //             console.log('No saved timer found');
+    //             return;
+    //         }
+
+    //         const {start, end, scheduleId, isEnabled} = JSON.parse(savedTimer);
+    //         const now = moment().unix();
+
+    //         console.log(
+    //             'Now:',
+    //             now,
+    //             'Start:',
+    //             start,
+    //             'End:',
+    //             end,
+    //             'ScheduleId:',
+    //             scheduleId,
+    //         );
+
+    //         if (now >= start && now < end) {
+    //             const remaining = end - now;
+    //             console.log('Resuming timer, remaining seconds:', remaining);
+
+    //             setSilentMode(true);
+    //             setRunning(true);
+    //             setTimer(remaining);
+
+    //             // ✅ Fix: Force both sides to be string
+    //             console.log('selectedSchedule====', selectedSchedule);
+    //             console.log('arrayEvents====', arrayEvents);
+    //             const selectedSchedule = arrayEvents.find(
+    //                 item => String(item.id) === String(scheduleId),
+    //             );
+
+    //             if (selectedSchedule) {
+    //                 console.log('Found matching schedule:', selectedSchedule);
+
+    //                 BackgroundService.start(backgroundTask, {
+    //                     taskName: 'SilentTimer',
+    //                     taskTitle: 'Silent Timer Running',
+    //                     taskDesc: 'Tracking scheduled silent mode timer',
+    //                     taskIcon: {name: 'ic_launcher', type: 'mipmap'},
+    //                     parameters: {delay: 1000, schedule: selectedSchedule},
+    //                     foregroundServiceType: 'dataSync',
+    //                 });
+    //             } else {
+    //                 console.warn(
+    //                     'No matching schedule found for scheduleId:',
+    //                     scheduleId,
+    //                 );
+    //             }
+    //         } else if (now >= end) {
+    //             console.log('Timer already expired, clearing saved data');
+    //             await AsyncStorage.removeItem('timer_state');
+    //             setSilentMode(false);
+    //             setRunning(false);
+    //             setTimer(0);
+    //         } else {
+    //             console.log('Timer has not started yet');
+    //         }
+    //     } catch (error) {
+    //         console.error('Failed to restore timer state:', error);
+    //     }
+    // };
 
     const getCalendarEvents = async () => {
         console.log('calendar_event', 'calendar_event------');
@@ -301,6 +465,9 @@ export default function HomeScreen() {
         await setPhoneNormal();
         setSilentMode(false);
         setRunning(false);
+
+        await AsyncStorage.removeItem('timer_state');
+
         await BackgroundService.stop();
     };
 
@@ -351,10 +518,35 @@ export default function HomeScreen() {
         if (selectedSchedule?.enabled) {
             setPhoneSilent();
             setSilentMode(true);
-            setTimer(900);
+            setTimer(0);
             setRunning(true);
 
-            console.log('This calll =====');
+            const startTimestamp = convertTimeToTimestamp(
+                selectedSchedule.startTime,
+            );
+            const endTimestamp = convertTimeToTimestamp(
+                selectedSchedule.endTime,
+            );
+
+            // ✅ Save timer state in AsyncStorage
+            const timerData = {
+                scheduleId: selectedSchedule.id,
+                start: startTimestamp,
+                end: endTimestamp,
+                isEnabled: selectedSchedule.enabled,
+            };
+
+            console.log('Saving timer state:', timerData);
+
+            await AsyncStorage.setItem(
+                'timer_state',
+                JSON.stringify(timerData),
+            );
+
+            const check = await AsyncStorage.getItem('timer_state');
+            console.log('Data after saving:', check);
+
+            setActiveScheduleId(selectedSchedule.id);
 
             BackgroundService.start(backgroundTask, {
                 taskName: 'SilentTimer',
@@ -368,6 +560,11 @@ export default function HomeScreen() {
             setPhoneNormal();
             setSilentMode(false);
             setRunning(false);
+
+            setActiveScheduleId(null);
+            // REMOVE TIMER STATE
+            await AsyncStorage.removeItem('timer_state');
+
             await BackgroundService.stop();
         }
     };
@@ -396,9 +593,25 @@ export default function HomeScreen() {
                     setRunning(true);
                     const remaining = end - now;
                     setTimeLeft(formatTime(remaining));
+                    // await AsyncStorage.setItem(
+                    //     'timer_state',
+                    //     JSON.stringify({start, end}),
+                    // );
+                    const existingData =
+                        JSON.parse(await AsyncStorage.getItem('timer_state')) ||
+                        {};
+
+                    const newData = {
+                        ...existingData, // keep previous data (like scheduleId, isEnabled)
+                        scheduleId: schedule.id, // ensure scheduleId is included
+                        start,
+                        end,
+                        isEnabled: schedule.enabled, // optional but recommended
+                    };
+
                     await AsyncStorage.setItem(
                         'timer_state',
-                        JSON.stringify({start, end}),
+                        JSON.stringify(newData),
                     );
                 } else {
                     console.log('Else call');
@@ -531,6 +744,7 @@ export default function HomeScreen() {
                         // );
 
                         setArrayEvents(formattedData);
+                        // restoreTimerState();
                     } else {
                         setArrayEvents([]);
                     }
@@ -666,7 +880,8 @@ export default function HomeScreen() {
                                     }}>
                                     <TouchableOpacity
                                         style={{margin: 5}}
-                                        onPress={() => onPressEdit(item)}>
+                                        onPress={() => onPressEdit(item)}
+                                        disabled={activeScheduleId === item.id}>
                                         <Text style={{color: '#D6721E'}}>
                                             Edit
                                         </Text>
@@ -675,7 +890,8 @@ export default function HomeScreen() {
                                         style={{margin: 5}}
                                         onPress={() => {
                                             onPressDelete(item.id);
-                                        }}>
+                                        }}
+                                        disabled={activeScheduleId === item.id}>
                                         <Text style={{color: '#D6721E'}}>
                                             Delete
                                         </Text>
