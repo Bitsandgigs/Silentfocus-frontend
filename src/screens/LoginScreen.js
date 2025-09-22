@@ -45,10 +45,9 @@ import {AppContext} from '../utils/context/contextProvider';
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import clock from '../assets/svgs/clock';
 import {showAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
-import CommonStyle, {OTPTextInputStyles} from '../utils/theme/commonStyle';
+import CommonStyle from '../utils/theme/commonStyle';
 import {
     CodeField,
     Cursor,
@@ -72,6 +71,7 @@ export default function LoginScreen() {
     const [hasErrors, setHasErrors] = useState(false);
     const [isError, setIsError] = useState(false);
     const [value, setValue] = useState('');
+    const [seconds, setSeconds] = useState(60);
     const CELL_COUNT = 4;
 
     const [autoCompleteType, setAutoCompleteType] = useState();
@@ -91,6 +91,16 @@ export default function LoginScreen() {
         });
         setAutoCompleteType(type);
     }, []);
+
+    useEffect(() => {
+        if (seconds === 0) return; // stop when timer hits 0
+
+        const interval = setInterval(() => {
+            setSeconds(prev => prev - 1);
+        }, 1000);
+
+        return () => clearInterval(interval); // cleanup
+    }, [seconds]);
 
     // useState
     const [isLoading, setIsLoading] = useState(false);
@@ -124,8 +134,13 @@ export default function LoginScreen() {
         registerRefs[registerActiveInputIndex + 1].current.focus();
     };
 
-    const handleResendOtp = async () => {};
-
+    const handleResendOtp = async () => {
+        const payload = {
+            email: values.email ? values.email : '',
+        };
+        setSeconds(60);
+        ResendOtpApiCall(payload);
+    };
     const handleVerifyaAndRegister = async () => {
         const payload = {
             email: values.email ? values.email : '',
@@ -260,6 +275,49 @@ export default function LoginScreen() {
                     updateConstantValue(responseData?.result);
                     setModalVisible(false);
                     setIsLogin(true);
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
+    const ResendOtpApiCall = async payload => {
+        const url = EndPoints.resendOtp;
+
+        await APICall('post', payload, url).then(response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+
+                if (responseData?.status === '1') {
+                    // navigation.navigate(screens.ResetPasswordScreen, {
+                    //     email: payload.email,
+                    // });
                 } else if (responseData?.status === '0') {
                     showAlert(
                         Constants.commonConstant.appName,
@@ -744,21 +802,49 @@ export default function LoginScreen() {
                             }}
                         />
 
-                        <TouchableOpacity
-                            onPress={() => handleResendOtp()}
-                            style={{
-                                margin: 8,
-                                padding: 8,
-                            }}>
-                            <Text
+                        {seconds > 0 ? (
+                            <View
                                 style={{
-                                    color: Colors.themeColor,
-                                    // fontSize: '15',
-                                    fontWeight: 'bold',
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginTop: 16,
+                                    marginBottom: 16,
                                 }}>
-                                {localize('SF27')}
-                            </Text>
-                        </TouchableOpacity>
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        color: Colors.themeColor,
+                                    }}>
+                                    Haven't received the code yet ? Send Again
+                                </Text>
+                                <Text
+                                    style={{
+                                        color: Colors.themeColor,
+                                        fontWeight: 'bold',
+                                    }}>
+                                    {' '}
+                                    ({seconds} sec)
+                                </Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleResendOtp}
+                                style={{
+                                    alignSelf: 'center',
+                                    marginTop: 16,
+                                    marginBottom: 16,
+                                }}>
+                                <Text
+                                    style={{
+                                        color: Colors.themeColor,
+                                        fontSize: 13,
+                                        fontWeight: 'bold',
+                                    }}>
+                                    Haven't received the code yet? Resend OTP
+                                </Text>
+                            </TouchableOpacity>
+                        )}
 
                         <CustomButton
                             title={'Verify and Register'}

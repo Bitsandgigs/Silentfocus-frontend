@@ -61,18 +61,28 @@ export default function VerifyOtpScreen() {
         setValue,
     });
 
-    // useEffect
     useEffect(() => {
+        if (seconds === 0) return; // stop when timer hits 0
+
         const interval = setInterval(() => {
-            if (seconds > 0) {
-                setSeconds(seconds - 1);
-            } else {
-                clearInterval(interval);
-            }
+            setSeconds(prev => prev - 1);
         }, 1000);
 
-        return () => clearInterval(interval);
+        return () => clearInterval(interval); // cleanup
     }, [seconds]);
+
+    // // useEffect
+    // useEffect(() => {
+    //     const interval = setInterval(() => {
+    //         if (seconds > 0) {
+    //             setSeconds(seconds - 1);
+    //         } else {
+    //             clearInterval(interval);
+    //         }
+    //     }, 1000);
+
+    //     return () => clearInterval(interval);
+    // }, [seconds]);
 
     useEffect(() => {
         const type = Platform.select({
@@ -95,6 +105,7 @@ export default function VerifyOtpScreen() {
         const payload = {
             email: email ? email : '',
         };
+        setSeconds(60);
         ResendOtpApiCall(payload);
     };
 
@@ -255,50 +266,48 @@ export default function VerifyOtpScreen() {
                                     }}
                                 />
 
-                                {seconds !== 0 ? (
+                                {seconds > 0 ? (
                                     <View
                                         style={{
                                             flexDirection: 'row',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            margin: 8,
-                                            padding: 8,
+                                            marginTop: 16,
+                                            marginBottom: 16,
                                         }}>
                                         <Text
                                             style={{
+                                                fontSize: 15,
                                                 color: Colors.themeColor,
-                                                fontSize: 14,
-                                                fontWeight: 'bold',
                                             }}>
-                                            {'Send again'}
+                                            Haven't received the code yet ? Send
+                                            Again
                                         </Text>
                                         <Text
                                             style={{
                                                 color: Colors.themeColor,
-                                                fontSize: 14,
                                                 fontWeight: 'bold',
                                             }}>
                                             {' '}
-                                            {'('}
-                                            {seconds} {'sec'}
-                                            {')'}
+                                            ({seconds} sec)
                                         </Text>
                                     </View>
                                 ) : (
                                     <TouchableOpacity
-                                        onPress={() => handleResendOtp()}
+                                        onPress={handleResendOtp}
                                         style={{
-                                            margin: 8,
-                                            padding: 10,
                                             alignSelf: 'center',
+                                            marginTop: 16,
+                                            marginBottom: 16,
                                         }}>
                                         <Text
                                             style={{
                                                 color: Colors.themeColor,
-                                                fontSize: '15',
+                                                fontSize: 15,
                                                 fontWeight: 'bold',
                                             }}>
-                                            {localize('SF27')}
+                                            Haven't received the code yet?
+                                            Resend OTP
                                         </Text>
                                     </TouchableOpacity>
                                 )}
