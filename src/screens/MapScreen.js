@@ -9,6 +9,7 @@ import {
     FlatList,
     ScrollView,
     Text,
+    Alert,
 } from 'react-native';
 import MapView, {Marker} from 'react-native-maps';
 import Geolocation from 'react-native-geolocation-service';
@@ -24,7 +25,7 @@ import {
 
 import {Colors} from '../utils/theme';
 
-const locations = [
+const initialLocations = [
     {
         id: 1,
         name: 'Central Park',
@@ -63,6 +64,7 @@ const locations = [
 const MapScreen = () => {
     const [region, setRegion] = useState(null);
     const [selectedLocation, setSelectedLocation] = useState(null);
+    const [locationList, setLocationList] = useState(initialLocations);
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
 
@@ -118,6 +120,30 @@ const MapScreen = () => {
         } else {
             alert('Please select a location first.');
         }
+    };
+
+    const onPressDelete = id => {
+        Alert.alert(
+            'Delete Location',
+            'Are you sure you want to delete this place?',
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        // ✅ Remove the item by filtering it out
+                        const updatedList = locationList.filter(
+                            item => item.id !== id,
+                        );
+                        setLocationList(updatedList);
+                    },
+                },
+            ],
+        );
     };
 
     return (
@@ -234,7 +260,7 @@ const MapScreen = () => {
                             /> */}
                             <FlatList
                                 key={'locationData'}
-                                data={locations}
+                                data={locationList}
                                 keyExtractor={item => item.id.toString()}
                                 keyboardShouldPersistTaps="handled"
                                 scrollEnabled={false}
@@ -283,7 +309,10 @@ const MapScreen = () => {
                                             </View>
                                         </View>
                                         <TouchableOpacity
-                                            style={styles.removeButton}>
+                                            style={styles.removeButton}
+                                            onPress={() =>
+                                                onPressDelete(item.id)
+                                            }>
                                             <Text
                                                 style={styles.removeButtonText}>
                                                 ×
