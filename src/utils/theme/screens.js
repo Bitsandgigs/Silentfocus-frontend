@@ -17,6 +17,7 @@ export default {
     ActivityScreen: 'ActivityCenterScreen',
     ScheduleTimeScreen: 'ScheduleTimeScreen',
     EditScheduleTimeScreen: 'EditScheduleTimeScreen',
+    MapScreen: 'MapScreen',
 
     // Profile Flow
     ProfileScreen: 'ProfileScreen',

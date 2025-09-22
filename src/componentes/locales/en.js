@@ -26,4 +26,5 @@ export default {
     SF25: 'Reset Password',
     SF26: `'To' time should be later than 'From' time.`,
     SF27: 'RESEND OTP',
+    SF28: 'Edit Schedule',
 };

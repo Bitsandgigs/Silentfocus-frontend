@@ -9,6 +9,8 @@ import {
     Modal,
     Pressable,
     useColorScheme,
+    Platform,
+    Linking,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import LogoutIcon from '../assets/svgs/Logout';
@@ -22,7 +24,6 @@ import {Constants} from '../utils/theme';
 import {showAlert} from '../function/Alert';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import screens from '../utils/theme/screens';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {clearLocalStorage} from '../function/commonFunctions';
 
@@ -68,6 +69,18 @@ const ProfileScreen = () => {
         };
         setIsLoading(true);
         LogOutApiCall(payload);
+    };
+    const onPressModifyFilters = timestamp => {
+        const date = new Date(timestamp).getTime(); // Current time in ms
+
+        if (Platform.OS === 'ios') {
+            // iOS calendar requires seconds
+            const seconds = Math.floor(date / 1000);
+            Linking.openURL(`calshow:${seconds}`);
+        } else {
+            // Android calendar uses milliseconds
+            Linking.openURL(`content://com.android.calendar/time/${date}`);
+        }
     };
 
     const LogOutApiCall = async payload => {
@@ -197,11 +210,16 @@ const ProfileScreen = () => {
                     </View>
                     <Separator divider={divider} />
                     <View style={styles.fieldRow}>
-                        <Field
-                            label="Event Filters"
-                            value="Modify Filters"
-                            color="#D6721E"
-                        />
+                        <TouchableOpacity
+                            onPress={() =>
+                                onPressModifyFilters(new Date().getTime())
+                            }>
+                            <Field
+                                label="Event Filters"
+                                value="Modify Filters"
+                                color="#D6721E"
+                            />
+                        </TouchableOpacity>
                     </View>
                     <Separator divider={divider} />
 
