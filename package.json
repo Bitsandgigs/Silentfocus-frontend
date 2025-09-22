@@ -29,7 +29,7 @@
     "react-native-background-actions": "^4.0.1",
     "react-native-calendar-events": "^2.2.0",
     "react-native-confirmation-code-field": "^8.0.1",
-    "react-native-date-picker": "^5.0.12",
+    "react-native-date-picker": "^5.0.2",
     "react-native-device-info": "^14.0.4",
     "react-native-extra-dimensions-android": "^1.2.5",
     "react-native-geolocation-service": "^5.3.1",
