@@ -39,6 +39,8 @@ import APICall from '../utils/api/api';
 import {showAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
+const CALENDAR_SYNC_KEY = 'isCalendarSynced';
+
 export default function HomeScreen() {
     const navigation = useNavigation();
     const [silentMode, setSilentMode] = useState(false);
@@ -106,8 +108,34 @@ export default function HomeScreen() {
         return () => clearInterval(interval);
     }, [silentMode, timer]);
 
+    // useEffect(() => {
+    //     getCalendarEvents();
+    // }, []);
+
     useEffect(() => {
-        getCalendarEvents();
+        const checkAndFetchCalendarEvents = async () => {
+            try {
+                const storedValue = await AsyncStorage.getItem(
+                    CALENDAR_SYNC_KEY,
+                );
+                const isCalendarSynced = JSON.parse(storedValue); // convert to boolean
+
+                console.log('isCalendarSynced====', isCalendarSynced);
+
+                if (isCalendarSynced) {
+                    // ✅ Only call getCalendarEvents if isCalendarSynced === true
+                    getCalendarEvents();
+                } else {
+                    console.log(
+                        'Calendar not synced, skipping getCalendarEvents',
+                    );
+                }
+            } catch (error) {
+                console.error('Error reading calendar sync status:', error);
+            }
+        };
+
+        checkAndFetchCalendarEvents();
     }, []);
 
     useEffect(() => {
@@ -319,6 +347,9 @@ export default function HomeScreen() {
 
             console.log('arrayFormattedEvents', arrayFormattedEvents);
 
+            AsyncStorage.getItem('isCalendarSynced').then(value =>
+                console.log('isCalendarSynced====', value),
+            );
             setIsLoading(true);
             saveCalendarEventsToApi(arrayFormattedEvents);
         }

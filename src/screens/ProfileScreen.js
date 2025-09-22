@@ -1,4 +1,4 @@
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {
     View,
     Text,
@@ -26,8 +26,11 @@ import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {clearLocalStorage} from '../function/commonFunctions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const calendarOptions = ['Google Calendar', 'Outlook Calendar'];
+
+const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
 const ProfileScreen = () => {
     const [calendarProvider, setCalendarProvider] = useState(null);
@@ -50,15 +53,43 @@ const ProfileScreen = () => {
     const mutedText = isDark ? '#aaa' : '#999';
     const divider = isDark ? 'rgba(85,85,85,0.35)' : '#ccc';
 
+    useEffect(() => {
+        loadCalendarSyncStatus();
+    }, []);
+
+    const loadCalendarSyncStatus = async () => {
+        try {
+            const storedStatus = await AsyncStorage.getItem(CALENDAR_SYNC_KEY);
+            if (storedStatus !== null) {
+                setIsCalendarSynced(JSON.parse(storedStatus)); // convert string to boolean
+            }
+        } catch (error) {
+            console.error('Error loading calendar sync status:', error);
+        }
+    };
+
+    const saveCalendarSyncStatus = async status => {
+        try {
+            await AsyncStorage.setItem(
+                CALENDAR_SYNC_KEY,
+                JSON.stringify(status),
+            );
+        } catch (error) {
+            console.error('Error saving calendar sync status:', error);
+        }
+    };
+
     const handleSelectProvider = provider => {
         setCalendarProvider(provider);
         setIsCalendarSynced(true);
+        saveCalendarSyncStatus(true);
         setModalVisible(false);
     };
 
     const handleDisconnectCalendar = () => {
         setIsCalendarSynced(false);
         setCalendarProvider(null);
+        saveCalendarSyncStatus(false);
     };
 
     const onPressLogOut = () => {
