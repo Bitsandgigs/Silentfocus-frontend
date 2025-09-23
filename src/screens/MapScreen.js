@@ -16,7 +16,6 @@ import Geolocation from 'react-native-geolocation-service';
 import {GooglePlacesAutocomplete} from 'react-native-google-places-autocomplete';
 import SafeAreaContainerView from '../componentes/SafeAreaContainerView/SafeAreaContainerView';
 import ContainerView from '../componentes/ContainerView/ContainerView';
-import CustomButton from '../componentes/CustomButton/CustomButton';
 // Lib
 import {
     widthPercentageToDP as wp,
@@ -24,6 +23,8 @@ import {
 } from 'react-native-responsive-screen';
 
 import {Colors} from '../utils/theme';
+import {useNavigation} from '@react-navigation/native';
+import BackIcon from '../assets/svgs/Back';
 
 const initialLocations = [
     {
@@ -62,6 +63,7 @@ const initialLocations = [
 ];
 
 const MapScreen = () => {
+    const navigation = useNavigation();
     const [region, setRegion] = useState(null);
     const [selectedLocation, setSelectedLocation] = useState(null);
     const [locationList, setLocationList] = useState(initialLocations);
@@ -102,8 +104,14 @@ const MapScreen = () => {
     };
 
     const handlePlaceSelect = (data, details) => {
+        if (!details?.geometry?.location) {
+            Alert.alert('Error', 'Location details not found!');
+            return;
+        }
+
         const lat = details.geometry.location.lat;
         const lng = details.geometry.location.lng;
+
         setSelectedLocation({latitude: lat, longitude: lng});
         setRegion({
             latitude: lat,
@@ -146,6 +154,10 @@ const MapScreen = () => {
         );
     };
 
+    const onPressGoBack = () => {
+        navigation.goBack();
+    };
+
     return (
         <ContainerView>
             <SafeAreaContainerView
@@ -165,41 +177,63 @@ const MapScreen = () => {
                         ]}
                         showsVerticalScrollIndicator={false}>
                         <View style={styles.container}>
-                            {/* Search Bar at Top */}
-                            <GooglePlacesAutocomplete
-                                placeholder="Search Places"
-                                fetchDetails={true}
-                                onPress={handlePlaceSelect}
-                                query={{
-                                    key: 'AIzaSyDOoLhVaRNoDXXCGYlrNf3t11DC3vooXVo',
-                                    language: 'en',
-                                }}
-                                predefinedPlaces={[]}
-                                textInputProps={{}}
-                                styles={{
-                                    container: {
-                                        width: '100%',
-                                        marginBottom: 16,
-                                        flex: 0,
-                                    },
-                                    textInputContainer: {
-                                        flexDirection: 'row',
+                            <View
+                                style={{
+                                    flexDirection: 'row',
+                                }}>
+                                <TouchableOpacity
+                                    onPress={onPressGoBack}
+                                    style={{
+                                        height: 42,
+                                        width: 40,
                                         alignItems: 'center',
-                                    },
-                                    textInput: {
-                                        borderRadius: 10,
-                                        padding: 16,
-                                        backgroundColor: Colors.textInputBg,
-                                        fontSize: 16,
-                                    },
-                                    listView: {
-                                        position: 'absolute',
-                                        top: 50,
-                                        zIndex: 9999,
-                                    },
-                                }}
-                                listViewDisplayed="auto"
-                            />
+                                        justifyContent: 'center',
+                                    }}>
+                                    <BackIcon
+                                        width={26}
+                                        height={26}
+                                        color={Colors.black}
+                                    />
+                                </TouchableOpacity>
+
+                                <GooglePlacesAutocomplete
+                                    placeholder="Search Places"
+                                    fetchDetails={true}
+                                    onPress={(data, details = null) =>
+                                        handlePlaceSelect(data, details)
+                                    }
+                                    query={{
+                                        key: 'AIzaSyDOoLhVaRNoDXXCGYlrNf3t11DC3vooXVo',
+                                        language: 'en',
+                                    }}
+                                    predefinedPlaces={[]}
+                                    textInputProps={{}}
+                                    styles={{
+                                        container: {
+                                            width: '90%',
+                                            marginBottom: 16,
+                                            flex: 0,
+                                            // backgroundColor: 'green',
+                                        },
+                                        textInputContainer: {
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                        },
+                                        textInput: {
+                                            borderRadius: 10,
+                                            padding: 16,
+                                            backgroundColor: Colors.textInputBg,
+                                            fontSize: 16,
+                                        },
+                                        listView: {
+                                            position: 'absolute',
+                                            top: 50,
+                                            zIndex: 9999,
+                                        },
+                                    }}
+                                    listViewDisplayed="auto"
+                                />
+                            </View>
 
                             {region && (
                                 <MapView
@@ -219,45 +253,6 @@ const MapScreen = () => {
                                 </MapView>
                             )}
 
-                            {/* <FlatList
-                                key={'locationData'}
-                                data={locations}
-                                keyExtractor={item => item.id.toString()}
-                                keyboardShouldPersistTaps="handled"
-                                scrollEnabled={false}
-                                renderItem={({item}) => (
-                                    <TouchableOpacity
-                                        style={{
-                                            padding: 10,
-                                            backgroundColor: '#f0f0f0',
-                                            marginBottom: 8,
-                                            borderRadius: 8,
-                                        }}
-                                        onPress={() =>
-                                            setSelectedLocation({
-                                                latitude: item.latitude,
-                                                longitude: item.longitude,
-                                            })
-                                        }>
-                                        <View>
-                                            <Text
-                                                style={{
-                                                    fontSize: 16,
-                                                    color: '#333',
-                                                }}>
-                                                {item.name}
-                                            </Text>
-                                            <Text
-                                                style={{
-                                                    fontSize: 16,
-                                                    color: '#333',
-                                                }}>
-                                                {item.name}
-                                            </Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                )}
-                            /> */}
                             <FlatList
                                 key={'locationData'}
                                 data={locationList}
@@ -323,11 +318,6 @@ const MapScreen = () => {
                             />
                         </View>
                     </ScrollView>
-                    {/* <CustomButton
-                        title={'Verify and Register'}
-                        // onPress={handleVerifyaAndRegister}
-                        // disabled={value.length !== CELL_COUNT}
-                    /> */}
                 </View>
             </SafeAreaContainerView>
         </ContainerView>
@@ -402,7 +392,7 @@ const styles = StyleSheet.create({
     },
     tagContainer: {
         alignSelf: 'flex-start',
-        backgroundColor: '#d46c0d', // orange tone
+        backgroundColor: '#d46c0d',
         paddingVertical: 4,
         paddingHorizontal: 12,
         borderRadius: 20,
@@ -413,17 +403,8 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: '600',
     },
-    // removeButton: {
-    //     marginLeft: 10,
-    //     backgroundColor: '#333',
-    //     borderRadius: 15,
-    //     width: 30,
-    //     height: 30,
-    //     alignItems: 'center',
-    //     justifyContent: 'center',
-    // },
     removeButton: {
-        position: 'absolute', // Overlay
+        position: 'absolute',
         top: -12,
         right: 5,
         backgroundColor: '#333',
@@ -432,7 +413,7 @@ const styles = StyleSheet.create({
         height: 25,
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10, // Ensure it stays above other elements
+        zIndex: 10,
     },
     removeButtonText: {
         color: '#fff',
