@@ -31,7 +31,7 @@ import ContainerView from '../componentes/ContainerView/ContainerView';
 import SafeAreaContainerView from '../componentes/SafeAreaContainerView/SafeAreaContainerView';
 
 // Misc Constants
-import {Colors, Constants, Images} from '../utils/theme';
+import {Colors, Constants, Images, Permissions} from '../utils/theme';
 import screens from '../utils/theme/screens';
 import {height, localize, width} from '../function/commonFunctions';
 import EndPoints from '../utils/api/endpoints';
@@ -151,6 +151,16 @@ export default function HomeScreen() {
         }
     }, [arrayEvents]);
 
+    Permissions.requestCallLogPermission(() => {
+        console.log('Permission granted, now fetch call logs');
+        // Fetch call logs here
+    });
+
+    Permissions.requestSMSPermission(() => {
+        console.log('Permission granted, now read SMS');
+        // Fetch call logs here
+    });
+
     const restoreTimerState = async () => {
         try {
             console.log('restoreTimerState started');
@@ -236,78 +246,6 @@ export default function HomeScreen() {
             console.error('Failed to restore timer state:', error);
         }
     };
-
-    // const restoreTimerState = async () => {
-    //     try {
-    //         console.log('restoreTimerState started');
-
-    //         const savedTimer = await AsyncStorage.getItem('timer_state');
-    //         console.log('restoreTimerState -> savedTimer value:', savedTimer);
-
-    //         if (!savedTimer) {
-    //             console.log('No saved timer found');
-    //             return;
-    //         }
-
-    //         const {start, end, scheduleId, isEnabled} = JSON.parse(savedTimer);
-    //         const now = moment().unix();
-
-    //         console.log(
-    //             'Now:',
-    //             now,
-    //             'Start:',
-    //             start,
-    //             'End:',
-    //             end,
-    //             'ScheduleId:',
-    //             scheduleId,
-    //         );
-
-    //         if (now >= start && now < end) {
-    //             const remaining = end - now;
-    //             console.log('Resuming timer, remaining seconds:', remaining);
-
-    //             setSilentMode(true);
-    //             setRunning(true);
-    //             setTimer(remaining);
-
-    //             // ✅ Fix: Force both sides to be string
-    //             console.log('selectedSchedule====', selectedSchedule);
-    //             console.log('arrayEvents====', arrayEvents);
-    //             const selectedSchedule = arrayEvents.find(
-    //                 item => String(item.id) === String(scheduleId),
-    //             );
-
-    //             if (selectedSchedule) {
-    //                 console.log('Found matching schedule:', selectedSchedule);
-
-    //                 BackgroundService.start(backgroundTask, {
-    //                     taskName: 'SilentTimer',
-    //                     taskTitle: 'Silent Timer Running',
-    //                     taskDesc: 'Tracking scheduled silent mode timer',
-    //                     taskIcon: {name: 'ic_launcher', type: 'mipmap'},
-    //                     parameters: {delay: 1000, schedule: selectedSchedule},
-    //                     foregroundServiceType: 'dataSync',
-    //                 });
-    //             } else {
-    //                 console.warn(
-    //                     'No matching schedule found for scheduleId:',
-    //                     scheduleId,
-    //                 );
-    //             }
-    //         } else if (now >= end) {
-    //             console.log('Timer already expired, clearing saved data');
-    //             await AsyncStorage.removeItem('timer_state');
-    //             setSilentMode(false);
-    //             setRunning(false);
-    //             setTimer(0);
-    //         } else {
-    //             console.log('Timer has not started yet');
-    //         }
-    //     } catch (error) {
-    //         console.error('Failed to restore timer state:', error);
-    //     }
-    // };
 
     const getCalendarEvents = async () => {
         console.log('calendar_event', 'calendar_event------');

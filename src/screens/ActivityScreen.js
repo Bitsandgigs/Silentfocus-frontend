@@ -1,13 +1,13 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
     useColorScheme,
+    FlatList,
+    Platform,
 } from 'react-native';
-
 import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
@@ -16,36 +16,99 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import CallIcon from '../assets/svgs/Call';
 import MessageIcon from '../assets/svgs/Message';
 import CrossIcon from '../assets/svgs/CrossButton';
+import CallLogs from 'react-native-call-log';
+import SmsAndroid from 'react-native-get-sms-android';
+import {Image} from 'react-native-svg';
 
 const ActivityCenterScreen = () => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const background = isDark ? '#111' : '#fff';
 
-    const [logs, setLogs] = useState([
-        {id: 1, name: 'Steve Jobs', type: 'CALL', time: '5 min ago'},
-        {id: 2, name: 'Steve Jobs', type: 'SMS', time: '5 min ago'},
-        {id: 3, name: 'Steve Jobs', type: 'WHATSAPP', time: '5 min ago'},
-        {id: 4, name: 'Steve Jobs', type: 'CALL', time: '5 min ago'},
-        {id: 5, name: 'Steve Jobs', type: 'SMS', time: '5 min ago'},
-        {id: 6, name: 'Steve Jobs', type: 'WHATSAPP', time: '5 min ago'},
-        {id: 7, name: 'Steve Jobs', type: 'CALL', time: '5 min ago'},
-        {id: 8, name: 'Steve Jobs', type: 'SMS', time: '5 min ago'},
-        {id: 9, name: 'Steve Jobs', type: 'WHATSAPP', time: '5 min ago'},
-        {id: 10, name: 'Steve Jobs', type: 'CALL', time: '5 min ago'},
-        {id: 12, name: 'Steve Jobs', type: 'SMS', time: '5 min ago'},
-        {id: 13, name: 'Steve Jobs', type: 'WHATSAPP', time: '5 min ago'},
-        {id: 16, name: 'Steve Jobs', type: 'CALL', time: '5 min ago'},
-        {id: 14, name: 'Steve Jobs', type: 'SMS', time: '5 min ago'},
-        {id: 15, name: 'Steve Jobs', type: 'WHATSAPP', time: '5 min ago'},
-    ]);
+    const [logs, setLogs] = useState([]);
 
-    const handleDelete = id => {
-        setLogs(prev => prev.filter(item => item.id !== id));
+    /* -------------------- FETCH CALL LOGS -------------------- */
+    const fetchMissedCalls = async () => {
+        try {
+            const logs = await CallLogs.loadAll();
+            console.log('CALL__logs====', logs);
+            const missedCalls = logs
+                .filter(log => log.type === 'MISSED') // Only missed calls
+                .map(log => ({
+                    id: `call-${log.timestamp}`,
+                    name: log.name || log.phoneNumber,
+                    type: 'CALL',
+                    time: formatTime(log.timestamp),
+                }));
+            return missedCalls;
+        } catch (e) {
+            console.error('Error fetching call logs:', e);
+            return [];
+        }
     };
+
+    /* -------------------- FETCH SMS -------------------- */
+    const fetchSMS = () => {
+        return new Promise(resolve => {
+            SmsAndroid.list(
+                JSON.stringify({
+                    box: 'inbox', // inbox or sent
+                    maxCount: 20,
+                }),
+                fail => {
+                    console.log('Failed to fetch SMS:', fail);
+                    resolve([]);
+                },
+                (count, smsList) => {
+                    const messages = JSON.parse(smsList).map(msg => ({
+                        id: `sms-${msg._id}`,
+                        name: msg.address,
+                        type: 'SMS',
+                        time: formatTime(msg.date),
+                    }));
+                    resolve(messages);
+                },
+            );
+        });
+    };
+
+    /* -------------------- FORMAT TIME -------------------- */
+    const formatTime = timestamp => {
+        const now = Date.now();
+        const diff = Math.floor((now - timestamp) / 60000); // difference in minutes
+        if (diff < 60) return `${diff} min ago`;
+        if (diff < 1440) return `${Math.floor(diff / 60)} hrs ago`;
+        return `${Math.floor(diff / 1440)} days ago`;
+    };
+
+    /* -------------------- COMBINED FETCH -------------------- */
+    const fetchLogs = async () => {
+        if (Platform.OS !== 'android') {
+            console.log('Call and SMS fetching only supported on Android');
+            return;
+        }
+
+        const missedCalls = await fetchMissedCalls();
+        const sms = await fetchSMS();
+
+        // Merge and sort by most recent
+        const combined = [...missedCalls, ...sms].sort(
+            (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+        );
+
+        setLogs(combined);
+    };
+
+    useEffect(() => {
+        fetchLogs();
+    }, []);
 
     const handleClearAll = () => {
         setLogs([]);
+    };
+
+    const handleDelete = id => {
+        setLogs(prev => prev.filter(item => item.id !== id));
     };
 
     const renderIcon = type => {
@@ -55,18 +118,83 @@ const ActivityCenterScreen = () => {
         return <View style={styles.defaultIcon} />;
     };
 
+    const renderItem = ({item}) => (
+        <View style={styles.cardWrapper}>
+            <View
+                style={[
+                    styles.card,
+                    {
+                        backgroundColor: isDark
+                            ? 'rgba(85,85,85,0.12)'
+                            : '#eeeeee',
+                    },
+                ]}>
+                <View
+                    style={[
+                        styles.avatar,
+                        {
+                            backgroundColor: isDark ? '#999' : '#ffff',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                        },
+                    ]}>
+                    {item.profilePic ? (
+                        <Image
+                            source={{uri: item.profilePic}}
+                            style={styles.avatarImage}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <Text style={styles.avatarLetter}>
+                            {item.name
+                                ? item.name.charAt(0).toUpperCase()
+                                : '?'}
+                        </Text>
+                    )}
+                </View>
+                <View style={styles.textBlock}>
+                    <Text
+                        style={[
+                            styles.name,
+                            {color: isDark ? '#fff' : '#1a1a1a'},
+                        ]}>
+                        {item.name}
+                    </Text>
+                    <Text
+                        style={[
+                            styles.subText,
+                            {color: isDark ? '#aaa' : '#555'},
+                        ]}>
+                        {item.type}
+                    </Text>
+                </View>
+
+                <Text style={[styles.time, {color: isDark ? '#aaa' : '#555'}]}>
+                    {item.time}
+                </Text>
+
+                <View style={styles.iconWrapper}>{renderIcon(item.type)}</View>
+            </View>
+
+            <TouchableOpacity
+                onPress={() => handleDelete(item.id)}
+                style={[
+                    styles.crossBtn,
+                    {backgroundColor: isDark ? '#000' : '#222'},
+                ]}>
+                <CrossIcon width={wp('4%')} height={wp('4%')} color="#fff" />
+            </TouchableOpacity>
+        </View>
+    );
+
     return (
         <SafeAreaView style={{flex: 1, backgroundColor: background}}>
-            <ScrollView
-                style={[
-                    styles.container,
-                    {backgroundColor: isDark ? '#111' : '#ffffff'},
-                ]}
-                contentContainerStyle={styles.scrollContent}>
+            <View style={[styles.container, {backgroundColor: background}]}>
                 <Text style={[styles.title, {color: '#D6721E'}]}>
                     Activity Center
                 </Text>
 
+                {/* Clear All Button */}
                 {logs.length > 0 && (
                     <View style={styles.clearAllWrapper}>
                         <TouchableOpacity onPress={handleClearAll}>
@@ -80,74 +208,23 @@ const ActivityCenterScreen = () => {
                                         color: '#fff',
                                     },
                                 ]}>
-                                clear all
+                                Clear All
                             </Text>
                         </TouchableOpacity>
                     </View>
                 )}
 
-                {logs.map(log => (
-                    <View key={log.id} style={styles.cardWrapper}>
-                        <View
-                            style={[
-                                styles.card,
-                                {
-                                    backgroundColor: isDark
-                                        ? 'rgba(85, 85, 85, 0.12)'
-                                        : '#eeeeee',
-                                },
-                            ]}>
-                            <View
-                                style={[
-                                    styles.avatar,
-                                    {backgroundColor: isDark ? '#999' : '#555'},
-                                ]}
-                            />
-                            <View style={styles.textBlock}>
-                                <Text
-                                    style={[
-                                        styles.name,
-                                        {color: isDark ? '#fff' : '#1a1a1a'},
-                                    ]}>
-                                    {log.name}
-                                </Text>
-                                <Text
-                                    style={[
-                                        styles.subText,
-                                        {color: isDark ? '#aaa' : '#555'},
-                                    ]}>
-                                    {log.type}
-                                </Text>
-                            </View>
-
-                            <Text
-                                style={[
-                                    styles.time,
-                                    {color: isDark ? '#aaa' : '#555'},
-                                ]}>
-                                {log.time}
-                            </Text>
-
-                            <View style={styles.iconWrapper}>
-                                {renderIcon(log.type)}
-                            </View>
-                        </View>
-
-                        <TouchableOpacity
-                            onPress={() => handleDelete(log.id)}
-                            style={[
-                                styles.crossBtn,
-                                {backgroundColor: isDark ? '#000' : '#222'},
-                            ]}>
-                            <CrossIcon
-                                width={wp('4%')}
-                                height={wp('4%')}
-                                color="#fff"
-                            />
-                        </TouchableOpacity>
-                    </View>
-                ))}
-            </ScrollView>
+                {/* FlatList for Logs */}
+                <FlatList
+                    data={logs}
+                    keyExtractor={item => item.id}
+                    renderItem={renderItem}
+                    ListEmptyComponent={
+                        <Text style={styles.emptyText}>No activity found</Text>
+                    }
+                    contentContainerStyle={{paddingBottom: hp('12%')}}
+                />
+            </View>
         </SafeAreaView>
     );
 };
@@ -160,10 +237,6 @@ const styles = StyleSheet.create({
         paddingTop: hp('1%'),
         paddingHorizontal: wp('5%'),
     },
-    scrollContent: {
-        paddingBottom: hp('12%'),
-        paddingTop: hp('2%'),
-    },
     title: {
         fontSize: wp('5.5%'),
         fontWeight: '700',
@@ -173,7 +246,7 @@ const styles = StyleSheet.create({
     clearAllWrapper: {
         flexDirection: 'row',
         justifyContent: 'flex-end',
-        marginBottom: hp('2%'),
+        marginBottom: hp('1%'),
     },
     clearAll: {
         fontSize: wp('3%'),
@@ -196,9 +269,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: wp('4%'),
     },
     avatar: {
-        width: wp('8%'),
-        height: wp('8%'),
-        borderRadius: wp('4%'),
+        width: wp('10%'),
+        height: wp('10%'),
+        borderRadius: wp('1%'),
         marginRight: wp('3%'),
     },
     textBlock: {
@@ -240,5 +313,11 @@ const styles = StyleSheet.create({
         height: wp('4%'),
         backgroundColor: '#fff',
         borderRadius: wp('2%'),
+    },
+    emptyText: {
+        textAlign: 'center',
+        fontSize: wp('4%'),
+        color: '#888',
+        marginTop: hp('5%'),
     },
 });
