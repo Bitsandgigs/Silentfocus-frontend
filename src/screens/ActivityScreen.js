@@ -19,27 +19,61 @@ import CrossIcon from '../assets/svgs/CrossButton';
 import CallLogs from 'react-native-call-log';
 import SmsAndroid from 'react-native-get-sms-android';
 import {Image} from 'react-native-svg';
+import {useIsFocused} from '@react-navigation/native';
+import {showAlert} from '../function/Alert';
+import {Constants} from '../utils/theme';
+import EndPoints from '../utils/api/endpoints';
+import APICall from '../utils/api/api';
 
 const ActivityCenterScreen = () => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const background = isDark ? '#111' : '#fff';
-
+    const isFocused = useIsFocused();
     const [logs, setLogs] = useState([]);
+    const [arrayEvents, setArrayEvents] = useState([]);
 
     /* -------------------- FETCH CALL LOGS -------------------- */
+    // const fetchMissedCalls = async () => {
+    //     try {
+    //         const logs = await CallLogs.loadAll();
+    //         console.log('CALL__logs====', logs);
+    //         const missedCalls = logs
+    //             .filter(log => log.type === 'MISSED') // Only missed calls
+    //             .map(log => ({
+    //                 id: `call-${log.timestamp}`,
+    //                 name: log.name || log.phoneNumber,
+    //                 type: 'CALL',
+    //                 time: formatTime(log.timestamp),
+    //             }));
+    //         return missedCalls;
+    //     } catch (e) {
+    //         console.error('Error fetching call logs:', e);
+    //         return [];
+    //     }
+    // };
+
     const fetchMissedCalls = async () => {
         try {
             const logs = await CallLogs.loadAll();
             console.log('CALL__logs====', logs);
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Start of today in ms
+
             const missedCalls = logs
-                .filter(log => log.type === 'MISSED') // Only missed calls
+                .filter(log => {
+                    const logDate = new Date(Number(log.timestamp));
+                    return log.type === 'MISSED' && logDate >= today; // Only missed calls from today
+                })
                 .map(log => ({
                     id: `call-${log.timestamp}`,
                     name: log.name || log.phoneNumber,
                     type: 'CALL',
                     time: formatTime(log.timestamp),
+                    timestamp: log.timestamp, // keep timestamp for sorting
                 }));
+
             return missedCalls;
         } catch (e) {
             console.error('Error fetching call logs:', e);
@@ -53,24 +87,58 @@ const ActivityCenterScreen = () => {
             SmsAndroid.list(
                 JSON.stringify({
                     box: 'inbox', // inbox or sent
-                    maxCount: 20,
+                    maxCount: 50, // fetch recent 50 messages
                 }),
                 fail => {
                     console.log('Failed to fetch SMS:', fail);
                     resolve([]);
                 },
                 (count, smsList) => {
-                    const messages = JSON.parse(smsList).map(msg => ({
-                        id: `sms-${msg._id}`,
-                        name: msg.address,
-                        type: 'SMS',
-                        time: formatTime(msg.date),
-                    }));
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0); // Start of today
+
+                    const messages = JSON.parse(smsList)
+                        .filter(msg => {
+                            const msgDate = new Date(Number(msg.date));
+                            return msgDate >= today; // Only today's messages
+                        })
+                        .map(msg => ({
+                            id: `sms-${msg._id}`,
+                            name: msg.address,
+                            type: 'SMS',
+                            time: formatTime(msg.date),
+                            timestamp: msg.date, // keep timestamp for sorting
+                        }));
+
                     resolve(messages);
                 },
             );
         });
     };
+
+    // const fetchSMS = () => {
+    //     return new Promise(resolve => {
+    //         SmsAndroid.list(
+    //             JSON.stringify({
+    //                 box: 'inbox', // inbox or sent
+    //                 maxCount: 20,
+    //             }),
+    //             fail => {
+    //                 console.log('Failed to fetch SMS:', fail);
+    //                 resolve([]);
+    //             },
+    //             (count, smsList) => {
+    //                 const messages = JSON.parse(smsList).map(msg => ({
+    //                     id: `sms-${msg._id}`,
+    //                     name: msg.address,
+    //                     type: 'SMS',
+    //                     time: formatTime(msg.date),
+    //                 }));
+    //                 resolve(messages);
+    //             },
+    //         );
+    //     });
+    // };
 
     /* -------------------- FORMAT TIME -------------------- */
     const formatTime = timestamp => {
@@ -97,6 +165,71 @@ const ActivityCenterScreen = () => {
         );
 
         setLogs(combined);
+    };
+
+    useEffect(() => {
+        if (isFocused) {
+            getScheduleApiCall();
+        }
+    }, [isFocused]);
+
+    const getScheduleApiCall = async () => {
+        const url = EndPoints.getScheduleTimerData;
+        const payload = {
+            userId: Constants.commonConstant.appUserId,
+        };
+
+        await APICall('get', payload, url).then(response => {
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                if (responseData?.status === '1') {
+                    if (
+                        responseData?.result &&
+                        responseData?.result?.length > 0
+                    ) {
+                        const formattedData = responseData.result.map(
+                            (item, index) => ({
+                                id: item.schedule_id || index,
+                                startTime: item.from_time || '00:00',
+                                endTime: item.to_time || '00:00',
+                                days: item.selected_days || 'Everyday',
+                                enabled: item.isTimerEnabled === true || false,
+                            }),
+                        );
+
+                        setArrayEvents(formattedData);
+                    } else {
+                        setArrayEvents([]);
+                    }
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
     };
 
     useEffect(() => {
