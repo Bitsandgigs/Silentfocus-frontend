@@ -14,6 +14,8 @@ const EndPoints = {
     scheduleTimerDataDelete: 'scheduleTimerData/{schedule_id}',
     logOut: '/logout',
     EditScheduleTimerData: 'scheduleTimerData/{schedule_id}',
+    setControlModes: '/control/modes',
+    getControlModes: '/control/modes',
 };
 
 export default EndPoints;

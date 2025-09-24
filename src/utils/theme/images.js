@@ -9,6 +9,9 @@ const Images = {
     iconAdd: require('../../assets/images/iconAdd.png'),
     iconPlus: require('../../assets/images/iconPlus.png'),
     iconCross: require('../../assets/images/iconCross.png'),
+    iconLocation: require('../../assets/images/iconLocation.png'),
+    iconCalendar: require('../../assets/images/iconCalendar.png'),
+    iconCustom: require('../../assets/images/iconCustom.png'),
 };
 
 export default Images;
