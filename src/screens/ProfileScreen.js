@@ -301,7 +301,7 @@ const ProfileScreen = () => {
                     <View style={styles.fieldRow}>
                         <Field
                             label="Active Permissions"
-                            value="Location"
+                            value="Location,Calendar,Notification"
                             color={mutedText}
                         />
                     </View>
