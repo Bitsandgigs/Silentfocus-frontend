@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useRef, useEffect, useCallback} from 'react';
 import {
     View,
     Text,
@@ -11,9 +11,14 @@ import {
     ScrollView,
     NativeModules,
     Platform,
+    AppState,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {useNavigation} from '@react-navigation/native';
+import {
+    useFocusEffect,
+    useIsFocused,
+    useNavigation,
+} from '@react-navigation/native';
 
 import CustomButton from '../componentes/CustomButton/CustomButton';
 
@@ -37,6 +42,8 @@ const PermissionScreen = () => {
     const [isCalendarEnabled, setIsCalendarEnabled] = useState(false);
     const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
     const [isDNDEnabled, setIsDNDEnabled] = useState(false);
+    const isFocused = useIsFocused();
+    const [appState, setAppState] = useState(AppState.currentState);
 
     const textColor = isDark ? '#fff' : '#000';
     const subtitleColor = isDark ? '#aaa' : '#555';
@@ -63,6 +70,36 @@ const PermissionScreen = () => {
             }),
         ]).start();
     }, []);
+
+    // useEffect(() => {
+    //     if (isFocused) {
+    //         checkDndPermission(); // re-check whenever screen comes back
+    //     }
+    // }, [isFocused]);
+
+    useFocusEffect(
+        useCallback(() => {
+            checkDndPermission();
+        }, []),
+    );
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', nextState => {
+            console.log('AppState changed to:', nextState);
+            if (
+                appState.match(/inactive|background/) &&
+                nextState === 'active'
+            ) {
+                console.log(
+                    'App came to foreground, checking DND permission...',
+                );
+                checkDndPermission();
+            }
+            setAppState(nextState);
+        });
+
+        return () => subscription.remove();
+    }, [appState]);
 
     useEffect(() => {
         checkLocation();
@@ -115,12 +152,28 @@ const PermissionScreen = () => {
         setIsNotificationsEnabled(!isNotificationsEnabled);
     };
 
-    const onDNDPermission = () => {
-        SilentFocus.openDndAccessSettings();
-        // Permissions.requestNotificationPermission(
-        //     requestNotificationPermission,
-        // );
+    const checkDndPermission = async () => {
+        try {
+            const result = await SilentFocus.checkDndPermission();
+            console.log('DND Permission result:', result); // Debug log
+            setIsDNDEnabled(result);
+        } catch (e) {
+            console.warn('Error checking DND Permission', e);
+        }
     };
+
+    const onDNDPermission = async () => {
+        if (!isDNDEnabled) {
+            // Open DND Settings
+            SilentFocus.openDndAccessSettings();
+        } else {
+            // Toggle off
+            setIsDNDEnabled(false);
+        }
+    };
+    // const onDNDPermission = () => {
+    //     SilentFocus.openDndAccessSettings();
+    // };
 
     const onPressContinue = () => {
         navigation.navigate(screens.LoginScreen);
@@ -276,7 +329,8 @@ const PermissionScreen = () => {
                     disabled={
                         !isLocationEnabled ||
                         !isCalendarEnabled ||
-                        !isNotificationsEnabled
+                        !isNotificationsEnabled ||
+                        !isDNDEnabled
                     }
                 />
             </View>
