@@ -151,14 +151,16 @@ export default function HomeScreen() {
         }
     }, [arrayEvents]);
 
+    Permissions.requestPhoneStatePermission(() => {
+        console.log('Permission granted, Read Phone State');
+    });
+
     Permissions.requestCallLogPermission(() => {
         console.log('Permission granted, now fetch call logs');
-        // Fetch call logs here
     });
 
     Permissions.requestSMSPermission(() => {
         console.log('Permission granted, now read SMS');
-        // Fetch call logs here
     });
 
     const restoreTimerState = async () => {
@@ -785,101 +787,217 @@ export default function HomeScreen() {
     };
 
     // Render Component
-    const renderCustomScheduleItem = ({item}) => (
-        <View style={styles.containerView}>
-            <View
-                style={[
-                    styles.card,
-                    {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
-                ]}>
-                <View style={styles.cardContent}>
-                    <Image source={Images.iconClock} style={styles.icon} />
-                    <View style={styles.timeBlock}>
-                        <Text
-                            style={[
-                                styles.timeRange,
-                                {color: isDark ? 'white' : '#1C1C1C'},
-                            ]}>
-                            {convertTo24HourFormat(item.startTime)} -{' '}
-                            {convertTo24HourFormat(item.endTime)}
-                        </Text>
+    // const renderCustomScheduleItem = ({item}) => (
 
-                        <View style={styles.labelBlock}>
+    //     <View style={styles.containerView}>
+    //         <View
+    //             style={[
+    //                 styles.card,
+    //                 {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
+    //             ]}>
+    //             <View style={styles.cardContent}>
+    //                 <Image source={Images.iconClock} style={styles.icon} />
+    //                 <View style={styles.timeBlock}>
+    //                     <Text
+    //                         style={[
+    //                             styles.timeRange,
+    //                             {color: isDark ? 'white' : '#1C1C1C'},
+    //                         ]}>
+    //                         {convertTo24HourFormat(item.startTime)} -{' '}
+    //                         {convertTo24HourFormat(item.endTime)}
+    //                     </Text>
+
+    //                     <View style={styles.labelBlock}>
+    //                         <Text
+    //                             style={[
+    //                                 styles.everyday,
+    //                                 {
+    //                                     color: isDark
+    //                                         ? 'rgba(250,250,250,0.45)'
+    //                                         : '#555',
+    //                                 },
+    //                             ]}>
+    //                             {item.days === 'Everyday'
+    //                                 ? 'Everyday'
+    //                                 : item.days
+    //                                       .map(day => day.slice(0, 3))
+    //                                       .join(', ')}
+    //                         </Text>
+
+    //                         <View
+    //                             style={[
+    //                                 styles.dividerLine,
+    //                                 {
+    //                                     backgroundColor: isDark
+    //                                         ? 'rgba(85, 85, 85, 0.35)'
+    //                                         : '#D9D9D9',
+    //                                 },
+    //                             ]}
+    //                         />
+
+    //                         <View
+    //                             style={{
+    //                                 flexDirection: 'row',
+    //                                 width: wp('65%'),
+    //                                 justifyContent: 'space-between',
+    //                             }}>
+    //                             <Text style={styles.addSchedule}>
+    //                                 Add Schedule ＋
+    //                             </Text>
+
+    //                             <View
+    //                                 style={{
+    //                                     flexDirection: 'row',
+    //                                     alignItems: 'center',
+    //                                 }}>
+    //                                 <TouchableOpacity
+    //                                     style={{margin: 5}}
+    //                                     onPress={() => onPressEdit(item)}
+    //                                     disabled={activeScheduleId === item.id}>
+    //                                     <Text style={{color: '#D6721E'}}>
+    //                                         Edit
+    //                                     </Text>
+    //                                 </TouchableOpacity>
+    //                                 <TouchableOpacity
+    //                                     style={{margin: 5}}
+    //                                     onPress={() => {
+    //                                         onPressDelete(item.id);
+    //                                     }}
+    //                                     disabled={activeScheduleId === item.id}>
+    //                                     <Text style={{color: '#D6721E'}}>
+    //                                         Delete
+    //                                     </Text>
+    //                                 </TouchableOpacity>
+    //                             </View>
+    //                         </View>
+    //                     </View>
+    //                 </View>
+    //                 <Switch
+    //                     value={item.enabled}
+    //                     style={styles.toggleWrapper}
+    //                     onValueChange={() => toggleSwitch(item.id)}
+    //                     trackColor={{false: '#444', true: '#ff9800'}}
+    //                     thumbColor={item.enabled ? '#fff' : '#fff'}
+    //                 />
+    //             </View>
+    //         </View>
+    //     </View>
+
+    // );
+
+    const renderCustomScheduleItem = ({item}) => {
+        const now = moment().unix();
+        const startTimestamp = convertTimeToTimestamp(item.startTime);
+        const endTimestamp = convertTimeToTimestamp(item.endTime);
+
+        // If event end time is passed, disable the switch
+        const isPastEvent = now > endTimestamp;
+
+        return (
+            <View style={styles.containerView}>
+                <View
+                    style={[
+                        styles.card,
+                        {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'},
+                    ]}>
+                    <View style={styles.cardContent}>
+                        <Image source={Images.iconClock} style={styles.icon} />
+                        <View style={styles.timeBlock}>
                             <Text
                                 style={[
-                                    styles.everyday,
-                                    {
-                                        color: isDark
-                                            ? 'rgba(250,250,250,0.45)'
-                                            : '#555',
-                                    },
+                                    styles.timeRange,
+                                    {color: isDark ? 'white' : '#1C1C1C'},
                                 ]}>
-                                {item.days === 'Everyday'
-                                    ? 'Everyday'
-                                    : item.days
-                                          .map(day => day.slice(0, 3))
-                                          .join(', ')}
+                                {convertTo24HourFormat(item.startTime)} -{' '}
+                                {convertTo24HourFormat(item.endTime)}
                             </Text>
 
-                            <View
-                                style={[
-                                    styles.dividerLine,
-                                    {
-                                        backgroundColor: isDark
-                                            ? 'rgba(85, 85, 85, 0.35)'
-                                            : '#D9D9D9',
-                                    },
-                                ]}
-                            />
-
-                            <View
-                                style={{
-                                    flexDirection: 'row',
-                                    width: wp('65%'),
-                                    justifyContent: 'space-between',
-                                }}>
-                                <Text style={styles.addSchedule}>
-                                    Add Schedule ＋
+                            <View style={styles.labelBlock}>
+                                <Text
+                                    style={[
+                                        styles.everyday,
+                                        {
+                                            color: isDark
+                                                ? 'rgba(250,250,250,0.45)'
+                                                : '#555',
+                                        },
+                                    ]}>
+                                    {item.days === 'Everyday'
+                                        ? 'Everyday'
+                                        : item.days
+                                              .map(day => day.slice(0, 3))
+                                              .join(', ')}
                                 </Text>
+
+                                <View
+                                    style={[
+                                        styles.dividerLine,
+                                        {
+                                            backgroundColor: isDark
+                                                ? 'rgba(85, 85, 85, 0.35)'
+                                                : '#D9D9D9',
+                                        },
+                                    ]}
+                                />
 
                                 <View
                                     style={{
                                         flexDirection: 'row',
-                                        alignItems: 'center',
+                                        width: wp('65%'),
+                                        justifyContent: 'space-between',
                                     }}>
-                                    <TouchableOpacity
-                                        style={{margin: 5}}
-                                        onPress={() => onPressEdit(item)}
-                                        disabled={activeScheduleId === item.id}>
-                                        <Text style={{color: '#D6721E'}}>
-                                            Edit
-                                        </Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={{margin: 5}}
-                                        onPress={() => {
-                                            onPressDelete(item.id);
-                                        }}
-                                        disabled={activeScheduleId === item.id}>
-                                        <Text style={{color: '#D6721E'}}>
-                                            Delete
-                                        </Text>
-                                    </TouchableOpacity>
+                                    <Text style={styles.addSchedule}>
+                                        Add Schedule ＋
+                                    </Text>
+
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                        }}>
+                                        <TouchableOpacity
+                                            style={{margin: 5}}
+                                            onPress={() => onPressEdit(item)}
+                                            disabled={
+                                                activeScheduleId === item.id
+                                            }>
+                                            <Text style={{color: '#D6721E'}}>
+                                                Edit
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={{margin: 5}}
+                                            onPress={() => {
+                                                onPressDelete(item.id);
+                                            }}
+                                            disabled={
+                                                activeScheduleId === item.id
+                                            }>
+                                            <Text style={{color: '#D6721E'}}>
+                                                Delete
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
                             </View>
                         </View>
+                        <Switch
+                            value={item.enabled}
+                            style={styles.toggleWrapper}
+                            onValueChange={() => toggleSwitch(item.id)}
+                            // trackColor={{false: '#444', true: '#ff9800'}}
+                            trackColor={{
+                                false: isPastEvent ? '#ccc' : '#444', // gray if disabled
+                                true: isPastEvent ? '#ccc' : '#ff9800', // gray if disabled
+                            }}
+                            thumbColor={item.enabled ? '#fff' : '#fff'}
+                            disabled={isPastEvent}
+                        />
                     </View>
-                    <Switch
-                        value={item.enabled}
-                        style={styles.toggleWrapper}
-                        onValueChange={() => toggleSwitch(item.id)}
-                        trackColor={{false: '#444', true: '#ff9800'}}
-                        thumbColor={item.enabled ? '#fff' : '#fff'}
-                    />
                 </View>
             </View>
-        </View>
-    );
+        );
+    };
 
     const renderMissedNotificationItem = ({item}) => (
         <View

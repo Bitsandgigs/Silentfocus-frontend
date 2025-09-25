@@ -36,6 +36,22 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun checkDndPermission(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                promise.resolve(true) // pre-M has no restriction
+                return
+            }
+
+            val granted = nm().isNotificationPolicyAccessGranted
+            android.util.Log.d("SilentFocus", "DND Permission Granted: $granted") // <--- Debug log
+            promise.resolve(granted)
+        } catch (e: Exception) {
+            promise.reject("ERR_HAS_DND", e)
+        }
+    }
+
+    @ReactMethod
     fun openDndAccessSettings() {
         try {
             val intent =

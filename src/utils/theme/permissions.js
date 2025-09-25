@@ -95,6 +95,15 @@ const checkNotificationPermission = async () => {
         } else {
             return false;
         }
+    } else if (Platform.OS === 'android') {
+        const result = await notifee.getNotificationSettings();
+        console.log('result Check =====', result);
+
+        if (result.authorizationStatus === AuthorizationStatus.AUTHORIZED) {
+            return true;
+        } else {
+            return false;
+        }
     }
 };
 
@@ -112,6 +121,25 @@ const requestNotificationPermission = async handleNotification => {
         const result = await notifee.requestPermission();
         if (result.authorizationStatus === AuthorizationStatus.AUTHORIZED) {
             handleNotification();
+        } else {
+            openSettings().catch(() => {});
+        }
+    }
+};
+
+const checkPhoneStatePermission = async () => {
+    if (Platform.OS === 'android') {
+        const result = await check(PERMISSIONS.ANDROID.READ_PHONE_STATE);
+        return result === RESULTS.GRANTED;
+    }
+    return false;
+};
+
+const requestPhoneStatePermission = async handleCallLog => {
+    if (Platform.OS === 'android') {
+        const result = await request(PERMISSIONS.ANDROID.READ_PHONE_STATE);
+        if (result === RESULTS.GRANTED) {
+            handleCallLog();
         } else {
             openSettings().catch(() => {});
         }
@@ -163,6 +191,8 @@ const Permissions = {
     requestCalenderPermission,
     checkNotificationPermission,
     requestNotificationPermission,
+    checkPhoneStatePermission,
+    requestPhoneStatePermission,
     checkCallLogPermission,
     requestCallLogPermission,
     checkSMSPermission,

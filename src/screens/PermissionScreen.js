@@ -14,11 +14,7 @@ import {
     AppState,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {
-    useFocusEffect,
-    useIsFocused,
-    useNavigation,
-} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 
 import CustomButton from '../componentes/CustomButton/CustomButton';
 
@@ -42,7 +38,6 @@ const PermissionScreen = () => {
     const [isCalendarEnabled, setIsCalendarEnabled] = useState(false);
     const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
     const [isDNDEnabled, setIsDNDEnabled] = useState(false);
-    const isFocused = useIsFocused();
     const [appState, setAppState] = useState(AppState.currentState);
 
     const textColor = isDark ? '#fff' : '#000';
@@ -70,12 +65,6 @@ const PermissionScreen = () => {
             }),
         ]).start();
     }, []);
-
-    // useEffect(() => {
-    //     if (isFocused) {
-    //         checkDndPermission(); // re-check whenever screen comes back
-    //     }
-    // }, [isFocused]);
 
     useFocusEffect(
         useCallback(() => {
