@@ -1,4 +1,4 @@
-import React, {useState, useEffect, cloneElement} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
     View,
     Text,
@@ -32,68 +32,6 @@ const ActivityCenterScreen = () => {
     const isFocused = useIsFocused();
     const [logs, setLogs] = useState([]);
     const [arrayEvents, setArrayEvents] = useState([]);
-
-    // const fetchMissedCalls = async () => {
-    //     try {
-    //         const logs = await CallLogs.loadAll();
-    //         console.log('CALL__logs====', logs);
-
-    //         const today = new Date();
-    //         today.setHours(0, 0, 0, 0); // Start of today in ms
-
-    //         const missedCalls = logs
-    //             .filter(log => {
-    //                 const logDate = new Date(Number(log.timestamp));
-    //                 return log.type === 'MISSED' && logDate >= today; // Only missed calls from today
-    //             })
-    //             .map(log => ({
-    //                 id: `call-${log.timestamp}`,
-    //                 name: log.name || log.phoneNumber,
-    //                 type: 'CALL',
-    //                 time: formatTime(log.timestamp),
-    //                 timestamp: log.timestamp, // keep timestamp for sorting
-    //             }));
-
-    //         return missedCalls;
-    //     } catch (e) {
-    //         console.error('Error fetching call logs:', e);
-    //         return [];
-    //     }
-    // };
-
-    // const fetchSMS = () => {
-    //     return new Promise(resolve => {
-    //         SmsAndroid.list(
-    //             JSON.stringify({
-    //                 box: 'inbox', // inbox or sent
-    //                 maxCount: 50, // fetch recent 50 messages
-    //             }),
-    //             fail => {
-    //                 console.log('Failed to fetch SMS:', fail);
-    //                 resolve([]);
-    //             },
-    //             (count, smsList) => {
-    //                 const today = new Date();
-    //                 today.setHours(0, 0, 0, 0); // Start of today
-
-    //                 const messages = JSON.parse(smsList)
-    //                     .filter(msg => {
-    //                         const msgDate = new Date(Number(msg.date));
-    //                         return msgDate >= today; // Only today's messages
-    //                     })
-    //                     .map(msg => ({
-    //                         id: `sms-${msg._id}`,
-    //                         name: msg.address,
-    //                         type: 'SMS',
-    //                         time: formatTime(msg.date),
-    //                         timestamp: msg.date, // keep timestamp for sorting
-    //                     }));
-
-    //                 resolve(messages);
-    //             },
-    //         );
-    //     });
-    // };
 
     const fetchMissedCalls = async events => {
         try {
@@ -174,7 +112,7 @@ const ActivityCenterScreen = () => {
 
     const formatTime = timestamp => {
         const now = Date.now();
-        const diff = Math.floor((now - timestamp) / 60000); // difference in minutes
+        const diff = Math.floor((now - timestamp) / 60000);
         if (diff < 60) return `${diff} min ago`;
         if (diff < 1440) return `${Math.floor(diff / 60)} hrs ago`;
         return `${Math.floor(diff / 1440)} days ago`;
@@ -203,23 +141,6 @@ const ActivityCenterScreen = () => {
         setLogs(combined);
     };
 
-    // const fetchLogs = async () => {
-    //     if (Platform.OS !== 'android') {
-    //         console.log('Call and SMS fetching only supported on Android');
-    //         return;
-    //     }
-
-    //     const missedCalls = await fetchMissedCalls();
-    //     const sms = await fetchSMS();
-
-    //     // Merge and sort by most recent
-    //     const combined = [...missedCalls, ...sms].sort(
-    //         (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
-    //     );
-
-    //     setLogs(combined);
-    // };
-
     const convertToTodayTimestamp = timeStr => {
         const [hours, minutes] = timeStr.split(':').map(Number);
         const today = new Date();
@@ -227,17 +148,32 @@ const ActivityCenterScreen = () => {
         return today.getTime();
     };
 
-    // Check if timestamp falls inside any event range
     const isWithinEventTime = (timestamp, events) => {
-        return events.some(event => {
-            if (!event.enabled) return false; // Skip disabled events
+        const now = Date.now();
 
+        return events.some(event => {
             const startTimestamp = convertToTodayTimestamp(event.startTime);
             const endTimestamp = convertToTodayTimestamp(event.endTime);
 
+            // Ignore upcoming events (enabled but not started yet)
+            if (event.enabled && now < startTimestamp) return false;
+
+            // Include events that are past or currently active
             return timestamp >= startTimestamp && timestamp <= endTimestamp;
         });
     };
+
+    // // Check if timestamp falls inside any event range
+    // const isWithinEventTime = (timestamp, events) => {
+    //     return events.some(event => {
+    //         if (!event.enabled) return false; // Skip disabled events
+
+    //         const startTimestamp = convertToTodayTimestamp(event.startTime);
+    //         const endTimestamp = convertToTodayTimestamp(event.endTime);
+
+    //         return timestamp >= startTimestamp && timestamp <= endTimestamp;
+    //     });
+    // };
 
     useEffect(() => {
         if (isFocused) {
