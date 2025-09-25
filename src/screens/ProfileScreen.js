@@ -44,7 +44,6 @@ const ProfileScreen = () => {
     const phoneInputRef = useRef(null);
 
     const colorScheme = useColorScheme();
-    const navigation = useNavigation();
     const isDark = colorScheme === 'dark';
 
     const background = isDark ? '#111' : '#fff';
@@ -101,6 +100,7 @@ const ProfileScreen = () => {
         setIsLoading(true);
         LogOutApiCall(payload);
     };
+
     const onPressModifyFilters = timestamp => {
         const date = new Date(timestamp).getTime(); // Current time in ms
 
@@ -112,6 +112,134 @@ const ProfileScreen = () => {
             // Android calendar uses milliseconds
             Linking.openURL(`content://com.android.calendar/time/${date}`);
         }
+    };
+
+    useEffect(() => {
+        setIsLoading(true);
+        GetUserProfileApiCall();
+    }, []);
+
+    useEffect(() => {
+        if (!phoneNumber) return;
+
+        const timeout = setTimeout(() => {
+            if (phoneNumber.length === 10) {
+                const payload = {
+                    username: Constants.commonConstant.appUser.username
+                        ? Constants.commonConstant.appUser.username
+                        : '',
+                    email: Constants.commonConstant.appUser.email
+                        ? Constants.commonConstant.appUser.email
+                        : '',
+                    phone_number: phoneNumber,
+                };
+
+                UpdateUserProfileApiCall(payload);
+            }
+        }, 800);
+
+        return () => clearTimeout(timeout);
+    }, [phoneNumber]);
+
+    const UpdateUserProfileApiCall = async payload => {
+        let url = EndPoints.updateProfile.replace(
+            '{user_id}',
+            `${Constants.commonConstant.appUserId}`,
+        );
+
+        await APICall('put', payload, url).then(response => {
+            setIsLoading(false);
+            console.log('responseData', response);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                console.log('responseData', responseData);
+
+                if (responseData?.status === '1') {
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidData
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.message);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
+    const GetUserProfileApiCall = async payload => {
+        let url = EndPoints.getUserProfile.replace(
+            '{user_id}',
+            `${Constants.commonConstant.appUserId}`,
+        );
+
+        await APICall('get', payload, url).then(response => {
+            setIsLoading(false);
+            console.log('get_user_profile_response1==', response);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                console.log('get_user_profile_response==', responseData);
+                const phoneNumber = responseData?.phone_number || '';
+                setPhoneNumber(phoneNumber);
+                if (responseData?.status === '1') {
+                } else if (responseData?.status === '0') {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        responseData?.message,
+                    );
+                }
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidData
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.message);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
     };
 
     const LogOutApiCall = async payload => {
@@ -205,6 +333,7 @@ const ProfileScreen = () => {
                                     ]}
                                     placeholder="+ Add Phone Number"
                                     placeholderTextColor="#D6721E"
+                                    maxLength={12}
                                 />
                             ) : (
                                 <Pressable
@@ -458,6 +587,7 @@ const styles = StyleSheet.create({
     },
     value: {
         fontSize: wp('3.5%'),
+        // width: wp('10%'),
         fontWeight: '400',
     },
     separator: {

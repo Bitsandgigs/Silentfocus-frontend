@@ -16,6 +16,8 @@ const EndPoints = {
     EditScheduleTimerData: 'scheduleTimerData/{schedule_id}',
     setControlModes: '/control/modes',
     getControlModes: '/control/modes',
+    updateProfile: '/users/{user_id}',
+    getUserProfile: '/users/{user_id}',
 };
 
 export default EndPoints;
