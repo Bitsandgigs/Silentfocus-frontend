@@ -203,7 +203,7 @@ const MapScreen = () => {
                                         handlePlaceSelect(data, details)
                                     }
                                     query={{
-                                        key: 'AIzaSyDOoLhVaRNoDXXCGYlrNf3t11DC3vooXVo',
+                                        key: 'AIzaSyDCLTglwawax2XO4iC9tj90QmMlAR6Lxc4',
                                         language: 'en',
                                     }}
                                     predefinedPlaces={[]}
