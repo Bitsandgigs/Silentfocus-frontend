@@ -231,10 +231,7 @@ export default function ForgotPasswordScreen() {
                                 <CustomButton
                                     title={localize('SF19')}
                                     onPress={handleSubmit}
-                                    disabled={
-                                        values.email === '' ||
-                                        values.password === ''
-                                    }
+                                    disabled={values.email === ''}
                                 />
                             </View>
                         </View>
