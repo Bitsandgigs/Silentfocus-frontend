@@ -12,6 +12,7 @@ import {
     NativeModules,
     Platform,
     AppState,
+    Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
@@ -24,6 +25,9 @@ import NotificationIcon from '../assets/svgs/Notification';
 import Toggle from '../assets/svgs/Toggle';
 import {Permissions, Responsive} from '../utils/theme';
 import screens from '../utils/theme/screens';
+import RNAndroidNotificationListener, {
+    RNAndroidNotificationListenerHeadlessJsName,
+} from 'react-native-android-notification-listener';
 
 const {width, height} = Dimensions.get('window');
 
@@ -37,8 +41,14 @@ const PermissionScreen = () => {
     const [isLocationEnabled, setIsLocationEnabled] = useState(false);
     const [isCalendarEnabled, setIsCalendarEnabled] = useState(false);
     const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
+    const [isRnNotificationsEnabled, setIsRnNoticationEnable] = useState(false);
+    const [isCallLogEnabled, setIsCallLogEnabled] = useState(false);
+    const [isSmsEnabled, setIsSmsEnabled] = useState(false);
+    const [isPhoneStateEnabled, setIsPhoneStateEnabled] = useState(false);
     const [isDNDEnabled, setIsDNDEnabled] = useState(false);
     const [appState, setAppState] = useState(AppState.currentState);
+    const appStateRef = useRef(AppState.currentState);
+    const lastOpenedSettingRef = useRef(null); // 'notification' | 'dnd' | null
 
     const textColor = isDark ? '#fff' : '#000';
     const subtitleColor = isDark ? '#aaa' : '#555';
@@ -68,27 +78,48 @@ const PermissionScreen = () => {
 
     useFocusEffect(
         useCallback(() => {
-            checkDndPermission();
+            checkAllPermissions();
         }, []),
     );
-
     useEffect(() => {
-        const subscription = AppState.addEventListener('change', nextState => {
-            console.log('AppState changed to:', nextState);
-            if (
-                appState.match(/inactive|background/) &&
-                nextState === 'active'
-            ) {
-                console.log(
-                    'App came to foreground, checking DND permission...',
-                );
-                checkDndPermission();
-            }
-            setAppState(nextState);
-        });
+        const subscription = AppState.addEventListener(
+            'change',
+            async nextState => {
+                const prev = appStateRef.current;
+                appStateRef.current = nextState;
 
-        return () => subscription.remove();
-    }, [appState]);
+                // only when moving from background/inactive -> active
+                if (
+                    (prev === 'background' || prev === 'inactive') &&
+                    nextState === 'active'
+                ) {
+                    console.log(
+                        '[AppState] returned to foreground. lastOpenedSetting=',
+                        lastOpenedSettingRef.current,
+                    );
+
+                    // small delay to let system settings take effect
+                    await new Promise(res => setTimeout(res, 700));
+
+                    if (lastOpenedSettingRef.current === 'notification') {
+                        await checkNotificationPermission();
+                    } else if (lastOpenedSettingRef.current === 'dnd') {
+                        await checkDndPermission();
+                    } else {
+                        // unknown — check both
+                        await checkAllPermissions();
+                    }
+
+                    // clear the flag
+                    lastOpenedSettingRef.current = null;
+                }
+            },
+        );
+
+        return () => {
+            subscription.remove();
+        };
+    }, []);
 
     useEffect(() => {
         checkLocation();
@@ -119,16 +150,30 @@ const PermissionScreen = () => {
         Permissions.requestLocationPermission(requestLocationPermission);
     };
 
-    const requestLocationPermission = () => {
-        setIsLocationEnabled(!isLocationEnabled);
-    };
-
     const onCalendarPermission = () => {
         Permissions.requestCalenderPermission(requestCalenderPermission);
     };
 
-    const requestCalenderPermission = () => {
-        setIsCalendarEnabled(!isCalendarEnabled);
+    const onCalllogPermission = () => {
+        Permissions.requestCallLogPermission(requestCallLogPermission);
+    };
+    const onSmsPermission = () => {
+        Permissions.requestSMSPermission(requestSMSPermission);
+    };
+    const onPhoneStatePermission = () => {
+        Permissions.requestPhoneStatePermission(requestPhoneStatePermission);
+    };
+
+    const requestCallLogPermission = () => {
+        setIsCallLogEnabled(!isCallLogEnabled);
+    };
+
+    const requestSMSPermission = () => {
+        setIsSmsEnabled(!isSmsEnabled);
+    };
+
+    const requestPhoneStatePermission = () => {
+        setIsPhoneStateEnabled(!isPhoneStateEnabled);
     };
 
     const onNotificationPermission = () => {
@@ -136,20 +181,95 @@ const PermissionScreen = () => {
             requestNotificationPermission,
         );
     };
+    const requestLocationPermission = () => {
+        setIsLocationEnabled(!isLocationEnabled);
+    };
+
+    const requestCalenderPermission = () => {
+        setIsCalendarEnabled(!isCalendarEnabled);
+    };
+
+    const onRnNotificationPermission = async () => {
+        if (!isRnNotificationsEnabled) {
+            await RNAndroidNotificationListener.requestPermission();
+        } else {
+            setIsRnNoticationEnable(false);
+        }
+    };
 
     const requestNotificationPermission = () => {
         setIsNotificationsEnabled(!isNotificationsEnabled);
     };
 
-    const checkDndPermission = async () => {
+    const checkAllPermissions = async () => {
+        await Promise.all([
+            checkDndPermission(),
+            checkNotificationPermission(),
+        ]);
+    };
+
+    /** Normalize permission results to boolean */
+    const normalizePermission = value => {
+        if (typeof value === 'boolean') return value;
+        if (!value && value !== false) return false;
+        const v = String(value).toLowerCase();
+        return (
+            v === 'true' ||
+            v === 'authorized' ||
+            v === 'granted' ||
+            v === 'enabled'
+        );
+    };
+
+    /** Check notification listener permission */
+    const checkNotificationPermission = async () => {
         try {
-            const result = await SilentFocus.checkDndPermission();
-            console.log('DND Permission result:', result); // Debug log
-            setIsDNDEnabled(result);
-        } catch (e) {
-            console.warn('Error checking DND Permission', e);
+            const status =
+                await RNAndroidNotificationListener.getPermissionStatus();
+            const enabled = normalizePermission(status);
+            console.log(
+                '[Permission] notification status:',
+                status,
+                '=>',
+                enabled,
+            );
+            setIsRnNoticationEnable(enabled);
+            return enabled;
+        } catch (err) {
+            console.error(
+                '[Permission] checkNotificationPermission error',
+                err,
+            );
+            setIsRnNoticationEnable(false);
+            return false;
         }
     };
+
+    /** Check DND permission via your native module (adjust name if different) */
+    const checkDndPermission = async () => {
+        try {
+            const result =
+                await NativeModules.SilentFocus?.checkDndPermission();
+            const enabled = normalizePermission(result);
+            console.log('[Permission] DND status:', result, '=>', enabled);
+            setIsDNDEnabled(enabled);
+            return enabled;
+        } catch (err) {
+            console.error('[Permission] checkDndPermission error', err);
+            setIsDNDEnabled(false);
+            return false;
+        }
+    };
+
+    // const checkDndPermission = async () => {
+    //     try {
+    //         const result = await SilentFocus.checkDndPermission();
+    //         console.log('DND Permission result:', result); // Debug log
+    //         setIsDNDEnabled(result);
+    //     } catch (e) {
+    //         console.warn('Error checking DND Permission', e);
+    //     }
+    // };
 
     const onDNDPermission = async () => {
         if (!isDNDEnabled) {
@@ -160,9 +280,6 @@ const PermissionScreen = () => {
             setIsDNDEnabled(false);
         }
     };
-    // const onDNDPermission = () => {
-    //     SilentFocus.openDndAccessSettings();
-    // };
 
     const onPressContinue = () => {
         navigation.navigate(screens.LoginScreen);
@@ -261,7 +378,7 @@ const PermissionScreen = () => {
                         <View style={styles.textBlock}>
                             <Text
                                 style={[styles.cardTitle, {color: textColor}]}>
-                                Notification Access
+                                Push Notification Permission
                             </Text>
                             <Text
                                 style={[
@@ -309,19 +426,151 @@ const PermissionScreen = () => {
                             </TouchableOpacity>
                         </View>
                     )}
+
+                    {/* Notification Permission */}
+                    <View style={[styles.card, {backgroundColor: cardColor}]}>
+                        <View style={styles.icon}>
+                            <NotificationIcon
+                                width={24}
+                                height={24}
+                                color={orange}
+                            />
+                        </View>
+                        <View style={styles.textBlock}>
+                            <Text
+                                style={[styles.cardTitle, {color: textColor}]}>
+                                Notification Access Permission
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.cardDescription,
+                                    {color: subtitleColor},
+                                ]}>
+                                To read and detect missed calls and messages
+                                from other apps while your phone is silent.
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={onRnNotificationPermission}>
+                            <Toggle isOn={isRnNotificationsEnabled} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* call log */}
+                    <View style={[styles.card, {backgroundColor: cardColor}]}>
+                        <View style={styles.icon}>
+                            <NotificationIcon
+                                width={24}
+                                height={24}
+                                color={orange}
+                            />
+                        </View>
+                        <View style={styles.textBlock}>
+                            <Text
+                                style={[styles.cardTitle, {color: textColor}]}>
+                                Call Log Access
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.cardDescription,
+                                    {color: subtitleColor},
+                                ]}>
+                                Allows the app to read your call history so it
+                                can detect missed or incoming calls while your
+                                phone is silent
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={onCalllogPermission}>
+                            <Toggle isOn={isCallLogEnabled} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* sms */}
+                    <View style={[styles.card, {backgroundColor: cardColor}]}>
+                        <View style={styles.icon}>
+                            <NotificationIcon
+                                width={24}
+                                height={24}
+                                color={orange}
+                            />
+                        </View>
+                        <View style={styles.textBlock}>
+                            <Text
+                                style={[styles.cardTitle, {color: textColor}]}>
+                                SMS Access
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.cardDescription,
+                                    {color: subtitleColor},
+                                ]}>
+                                Allows the app to read incoming SMS messages so
+                                it can detect missed messages and notify you
+                                even when your phone is in silent mode.
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={onSmsPermission}>
+                            <Toggle isOn={isSmsEnabled} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/*  phone state */}
+                    <View style={[styles.card, {backgroundColor: cardColor}]}>
+                        <View style={styles.icon}>
+                            <NotificationIcon
+                                width={24}
+                                height={24}
+                                color={orange}
+                            />
+                        </View>
+                        <View style={styles.textBlock}>
+                            <Text
+                                style={[styles.cardTitle, {color: textColor}]}>
+                                Phone State Access
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.cardDescription,
+                                    {color: subtitleColor},
+                                ]}>
+                                Allows the app to detect your phone’s current
+                                state (ringing, idle, or in a call) to manage
+                                notifications and silence mode behavior
+                                effectively.
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={onPhoneStatePermission}>
+                            <Toggle isOn={isPhoneStateEnabled} />
+                        </TouchableOpacity>
+                    </View>
                 </Animated.View>
             </ScrollView>
             <View style={styles.customButtonView}>
-                <CustomButton
-                    title={'Continue'}
-                    onPress={onPressContinue}
-                    disabled={
-                        !isLocationEnabled ||
-                        !isCalendarEnabled ||
-                        !isNotificationsEnabled ||
-                        !isDNDEnabled
-                    }
-                />
+                {Platform.OS === 'android' ? (
+                    <CustomButton
+                        title="Continue"
+                        onPress={onPressContinue}
+                        disabled={
+                            !isLocationEnabled ||
+                            !isCalendarEnabled ||
+                            !isNotificationsEnabled ||
+                            !isDNDEnabled ||
+                            !isRnNotificationsEnabled ||
+                            !isCallLogEnabled ||
+                            !isSmsEnabled ||
+                            !isPhoneStateEnabled
+                        }
+                    />
+                ) : (
+                    <CustomButton
+                        title="Continue"
+                        onPress={onPressContinue}
+                        disabled={
+                            !isLocationEnabled ||
+                            !isCalendarEnabled ||
+                            !isNotificationsEnabled
+                        }
+                    />
+                )}
             </View>
         </SafeAreaView>
     );

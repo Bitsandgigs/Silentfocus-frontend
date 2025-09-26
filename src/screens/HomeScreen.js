@@ -151,18 +151,6 @@ export default function HomeScreen() {
         }
     }, [arrayEvents]);
 
-    Permissions.requestPhoneStatePermission(() => {
-        console.log('Permission granted, Read Phone State');
-    });
-
-    Permissions.requestCallLogPermission(() => {
-        console.log('Permission granted, now fetch call logs');
-    });
-
-    Permissions.requestSMSPermission(() => {
-        console.log('Permission granted, now read SMS');
-    });
-
     const restoreTimerState = async () => {
         try {
             console.log('restoreTimerState started');
