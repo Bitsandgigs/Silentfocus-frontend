@@ -7,6 +7,8 @@ import {
     useColorScheme,
     FlatList,
     Platform,
+    NativeEventEmitter,
+    NativeModules,
 } from 'react-native';
 import {
     widthPercentageToDP as wp,
@@ -24,6 +26,7 @@ import {showAlert} from '../function/Alert';
 import {Constants} from '../utils/theme';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
+import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 const ActivityCenterScreen = () => {
     const colorScheme = useColorScheme();
@@ -32,6 +35,75 @@ const ActivityCenterScreen = () => {
     const isFocused = useIsFocused();
     const [logs, setLogs] = useState([]);
     const [arrayEvents, setArrayEvents] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // useEffect(() => {
+    //     const eventEmitter = new NativeEventEmitter(
+    //         NativeModules.RNAndroidNotificationListener,
+    //     );
+    //     const subscription = eventEmitter.addListener(
+    //         'notificationPosted',
+    //         notification => {
+    //             try {
+    //                 const parsed = JSON.parse(notification);
+    //                 console.log('FOREGROUND_NOTIFICATION ===>', parsed);
+
+    //                 if (parsed.package === 'com.whatsapp') {
+    //                     const title = parsed.title?.toLowerCase() || '';
+    //                     const text = parsed.text?.toLowerCase() || '';
+
+    //                     if (
+    //                         title.includes('missed voice call') ||
+    //                         text.includes('missed voice call') ||
+    //                         text.includes('missed video call')
+    //                     ) {
+    //                         console.log(
+    //                             'WHATSAPP MISSED CALL DETECTED ===>',
+    //                             parsed,
+    //                         );
+    //                     }
+    //                 }
+    //             } catch (err) {
+    //                 console.error(err);
+    //             }
+    //         },
+    //     );
+
+    //     return () => subscription.remove();
+    // }, []);
+
+    // useEffect(() => {
+    //     const subscription = RNAndroidNotificationListener.addEventListener(
+    //         RNAndroidNotificationListenerHeadlessJsName,
+    //         notification => {
+    //             try {
+    //                 const parsed = JSON.parse(notification);
+    //                 console.log('RAW_NOTIFICATION ===>', parsed);
+
+    //                 // WhatsApp missed call detection
+    //                 if (parsed.package === 'com.whatsapp') {
+    //                     const title = parsed.title?.toLowerCase() || '';
+    //                     const text = parsed.text?.toLowerCase() || '';
+
+    //                     if (
+    //                         title.includes('missed voice call') ||
+    //                         text.includes('missed voice call') ||
+    //                         text.includes('missed video call')
+    //                     ) {
+    //                         console.log(
+    //                             'WHATSAPP MISSED CALL DETECTED ===>',
+    //                             parsed,
+    //                         );
+    //                     }
+    //                 }
+    //             } catch (error) {
+    //                 console.error('Failed to parse notification:', error);
+    //             }
+    //         },
+    //     );
+
+    //     return () => subscription.remove();
+    // }, []);
 
     const fetchMissedCalls = async events => {
         try {
@@ -123,10 +195,11 @@ const ActivityCenterScreen = () => {
             console.log('Call and SMS fetching only supported on Android');
             return;
         }
-
+        setIsLoading(true);
         // Make sure events are loaded
         if (!arrayEvents || arrayEvents.length === 0) {
             console.log('No events available to filter logs');
+            setIsLoading(false);
             return;
         }
 
@@ -139,6 +212,7 @@ const ActivityCenterScreen = () => {
         );
 
         setLogs(combined);
+        setIsLoading(false);
     };
 
     const convertToTodayTimestamp = timeStr => {
@@ -364,11 +438,16 @@ const ActivityCenterScreen = () => {
                     keyExtractor={item => item.id}
                     renderItem={renderItem}
                     ListEmptyComponent={
-                        <Text style={styles.emptyText}>No activity found</Text>
+                        !isLoading && (
+                            <Text style={styles.emptyText}>
+                                No activity found
+                            </Text>
+                        )
                     }
                     contentContainerStyle={{paddingBottom: hp('12%')}}
                 />
             </View>
+            <CustomLoader isLoading={isLoading} />
         </SafeAreaView>
     );
 };
