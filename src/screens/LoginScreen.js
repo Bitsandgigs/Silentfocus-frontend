@@ -23,6 +23,10 @@ import {
 import {useFormik} from 'formik';
 import * as yup from 'yup';
 import {hasNotch} from 'react-native-device-info';
+import {
+    GoogleSignin,
+    statusCodes,
+} from '@react-native-google-signin/google-signin';
 
 // Component
 import CustomTextInputView from '../componentes/CustomTextInputView/CustomTextInputView';
@@ -84,6 +88,9 @@ export default function LoginScreen() {
     const [loginActiveInputIndex, setLoginActiveInputIndex] = useState(0);
     const [registerActiveInputIndex, setRegisterActiveInputIndex] = useState(0);
 
+    const [isLoading, setIsLoading] = useState(false);
+
+    // useEffect
     useEffect(() => {
         const type = Platform.select({
             android: 'sms-otp',
@@ -102,11 +109,24 @@ export default function LoginScreen() {
         return () => clearInterval(interval); // cleanup
     }, [seconds]);
 
-    // useState
-    const [isLoading, setIsLoading] = useState(false);
+    // Googel Login useEffect
+    useEffect(() => {
+        GoogleInstantCreate();
+        return function cleanup() {};
+    }, []);
 
-    // useRef
-    const otpRefs = [useRef(), useRef(), useRef(), useRef()];
+    const GoogleInstantCreate = async () => {
+        try {
+            await GoogleSignin.hasPlayServices();
+            GoogleSignin.configure({
+                webClientId: Constants.commonConstant.googleLoginWebClientId,
+                offlineAccess: true,
+                forceCodeForRefreshToken: true,
+            });
+        } catch (error) {
+            console.log('Error ========', JSON.stringify(error));
+        }
+    };
 
     // Login
     const loginRefs = Array(2)
@@ -345,6 +365,68 @@ export default function LoginScreen() {
             }
         });
     };
+
+    const SocialLoginApiCall = async payload => {
+        const url = EndPoints.socialLogin;
+
+        await APICall('post', payload, url, {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        }).then(async response => {
+            setIsLoading(false);
+            if (
+                response?.statusCode === Constants.apiStatusCode.success &&
+                response?.data
+            ) {
+                const responseData = response?.data;
+                console.log('SOCIAL_LOGIN_RESPONCE ===>>>', responseData);
+                const apiData = responseData || {};
+
+                const userResult = {
+                    user_id: apiData.id || 0,
+                    username: apiData.name || '',
+                    email: apiData.email || '',
+                    phone_number: apiData.phone_number || '',
+                };
+
+                Constants.commonConstant.appUser = userResult;
+                Constants.commonConstant.appUserId = userResult.user_id;
+                Constants.commonConstant.appToken = apiData.token || '';
+
+                await setAsyncData(
+                    Constants.asyncStorageKeys.userData,
+                    userResult,
+                );
+                await setAsyncData(
+                    Constants.asyncStorageKeys.userToken,
+                    apiData.token || '',
+                );
+
+                updateConstantValue(userResult);
+
+                setIsLogin(true);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.invalidContent
+            ) {
+                const errorData = response?.data;
+                showAlert(Constants.commonConstant.appName, errorData?.detail);
+            } else if (
+                response?.statusCode ===
+                Constants.apiStatusCode.unprocessableContent
+            ) {
+                const errorData = response?.data?.detail[0];
+                showAlert(Constants.commonConstant.appName, errorData?.msg);
+            } else if (
+                response?.statusCode === Constants.apiStatusCode.serverError
+            ) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Internal Server Error',
+                );
+            }
+        });
+    };
+
     // Formik and Yup
     const validationSchema = yup.object().shape({
         name: yup.string().when([], {
@@ -439,6 +521,44 @@ export default function LoginScreen() {
     // Function
     const onPressRightIcon = () => {
         setIsShowPassword(!isShowPassword);
+    };
+
+    // Social Ligin Function
+    const onPressGoogleLogin = async () => {
+        try {
+            const hasPlayServices = await GoogleSignin.hasPlayServices({
+                showPlayServicesUpdateDialog: true,
+            });
+            await GoogleSignin.signOut();
+            console.log('hasPlayServices ===>>>', hasPlayServices);
+
+            if (hasPlayServices) {
+                const responseData = await GoogleSignin.signIn();
+                console.log('responseData ===>>>', responseData);
+                if (responseData.type === 'success') {
+                    const payload = {
+                        provider: 'google',
+                        token: responseData?.data?.idToken || '',
+                    };
+                    setIsLoading(true);
+                    SocialLoginApiCall(JSON.stringify(payload));
+                } else if (responseData.type === 'cancelled') {
+                    console.log('Login Cancel ======', responseData);
+                }
+            } else {
+                showAlert(localize('SF29'), localize('SF31'), localize('SF30'));
+            }
+        } catch (error) {
+            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+                console.log('SIGN_IN_CANCELLED', error);
+            } else if (error.code === statusCodes.IN_PROGRESS) {
+                console.log('IN_PROGRESS', error);
+            } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                console.log('PLAY_SERVICES_NOT_AVAILABLE', error);
+            } else {
+                console.log('Last Error', error);
+            }
+        }
     };
 
     // Render Component
@@ -696,7 +816,8 @@ export default function LoginScreen() {
 
                                 <View style={styles.socialRow}>
                                     <TouchableOpacity
-                                        style={styles.socialButtonModern}>
+                                        style={styles.socialButtonModern}
+                                        onPress={onPressGoogleLogin}>
                                         <Image
                                             source={require('../assets/images/Goggle.png')}
                                             style={styles.socialIconModern}

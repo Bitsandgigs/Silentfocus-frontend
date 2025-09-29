@@ -22,9 +22,12 @@ export default {
     SF21: 'Check your email for the OTP code, Entering the correct OTP will confirm your identity.',
     SF22: 'Verify OTP',
     SF23: 'Set a New Password',
-    SF24: 'Must be at least 6 characters long.',
+    SF24: 'Must be at least 8 characters long.',
     SF25: 'Reset Password',
     SF26: `'To' time should be later than 'From' time.`,
     SF27: 'RESEND OTP',
     SF28: 'Edit Schedule',
+    SF29: 'An error occurred.',
+    SF30: 'Close',
+    SF31: 'Play services not available',
 };

@@ -12,12 +12,13 @@ const EndPoints = {
     resetNewPassword: 'create-new-password',
     resendOtp: 'resend-otp',
     scheduleTimerDataDelete: 'scheduleTimerData/{schedule_id}',
-    logOut: '/logout',
+    logOut: 'logout',
     EditScheduleTimerData: 'scheduleTimerData/{schedule_id}',
     setControlModes: '/control/modes',
     getControlModes: '/control/modes',
     updateProfile: '/users/{user_id}',
     getUserProfile: '/users/{user_id}',
+    socialLogin: 'v1/social-login',
 };
 
 export default EndPoints;

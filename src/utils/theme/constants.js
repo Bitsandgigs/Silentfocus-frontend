@@ -14,6 +14,8 @@ export const commonConstant = {
     appUserId: 0,
     appUser: defaultUser,
     appToken: '',
+    googleLoginWebClientId:
+        '457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com',
 
     // animation Timing
     animTime100: 100,
