@@ -17,7 +17,7 @@ export default function CustomDateTimePicker(props) {
         onChange,
         onCancel,
         isModalVisible = false,
-        modePicker = 'date',
+        modePicker = 'time',
         minDate = moment().subtract(100, 'years').toDate(),
         maxDate = moment().add(100, 'years').toDate(),
         confirmButtonText = 'Confirm',
@@ -32,6 +32,7 @@ export default function CustomDateTimePicker(props) {
     }, [isModalVisible]);
 
     useEffect(() => {
+        console.log('date=========', date);
         setSelectedDate(date);
     }, [date]);
 
@@ -65,6 +66,7 @@ export default function CustomDateTimePicker(props) {
                     maximumDate={maxDate}
                     is24hourSource={'device'}
                     locale={'en-US'}
+                    theme={'light'}
                 />
                 <CustomButton title={confirmButtonText} onPress={onPressDone} />
             </>
