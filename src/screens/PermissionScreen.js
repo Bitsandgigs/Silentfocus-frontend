@@ -102,7 +102,9 @@ const PermissionScreen = () => {
                     await new Promise(res => setTimeout(res, 700));
 
                     if (lastOpenedSettingRef.current === 'notification') {
-                        await checkNotificationPermission();
+                        if (Platform.OS === 'android') {
+                            await checkNotificationPermission();
+                        }
                     } else if (lastOpenedSettingRef.current === 'dnd') {
                         await checkDndPermission();
                     } else {
@@ -202,10 +204,12 @@ const PermissionScreen = () => {
     };
 
     const checkAllPermissions = async () => {
-        await Promise.all([
-            checkDndPermission(),
-            checkNotificationPermission(),
-        ]);
+        if (Platform.OS === 'android') {
+            await Promise.all([
+                checkDndPermission(),
+                checkNotificationPermission(),
+            ]);
+        }
     };
 
     /** Normalize permission results to boolean */
@@ -395,153 +399,190 @@ const PermissionScreen = () => {
                     </View>
 
                     {Platform.OS === 'android' && (
-                        <View
-                            style={[styles.card, {backgroundColor: cardColor}]}>
-                            <View style={styles.icon}>
-                                <NotificationIcon
-                                    width={24}
-                                    height={24}
-                                    color={orange}
-                                />
+                        <>
+                            <View
+                                style={[
+                                    styles.card,
+                                    {backgroundColor: cardColor},
+                                ]}>
+                                <View style={styles.icon}>
+                                    <NotificationIcon
+                                        width={24}
+                                        height={24}
+                                        color={orange}
+                                    />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text
+                                        style={[
+                                            styles.cardTitle,
+                                            {color: textColor},
+                                        ]}>
+                                        Do Not Disturb
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.cardDescription,
+                                            {color: subtitleColor},
+                                        ]}>
+                                        To notify you about missed calls and
+                                        messages after silent mode ends.
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={onDNDPermission}>
+                                    <Toggle isOn={isDNDEnabled} />
+                                </TouchableOpacity>
                             </View>
-                            <View style={styles.textBlock}>
-                                <Text
-                                    style={[
-                                        styles.cardTitle,
-                                        {color: textColor},
-                                    ]}>
-                                    Do Not Disturb
-                                </Text>
-                                <Text
-                                    style={[
-                                        styles.cardDescription,
-                                        {color: subtitleColor},
-                                    ]}>
-                                    To notify you about missed calls and
-                                    messages after silent mode ends.
-                                </Text>
+
+                            {/* Notification Permission */}
+                            <View
+                                style={[
+                                    styles.card,
+                                    {backgroundColor: cardColor},
+                                ]}>
+                                <View style={styles.icon}>
+                                    <NotificationIcon
+                                        width={24}
+                                        height={24}
+                                        color={orange}
+                                    />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text
+                                        style={[
+                                            styles.cardTitle,
+                                            {color: textColor},
+                                        ]}>
+                                        Notification Access Permission
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.cardDescription,
+                                            {color: subtitleColor},
+                                        ]}>
+                                        To read and detect missed calls and
+                                        messages from other apps while your
+                                        phone is silent.
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={onRnNotificationPermission}>
+                                    <Toggle isOn={isRnNotificationsEnabled} />
+                                </TouchableOpacity>
                             </View>
-                            <TouchableOpacity onPress={onDNDPermission}>
-                                <Toggle isOn={isDNDEnabled} />
-                            </TouchableOpacity>
-                        </View>
+
+                            {/* call log */}
+                            <View
+                                style={[
+                                    styles.card,
+                                    {backgroundColor: cardColor},
+                                ]}>
+                                <View style={styles.icon}>
+                                    <NotificationIcon
+                                        width={24}
+                                        height={24}
+                                        color={orange}
+                                    />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text
+                                        style={[
+                                            styles.cardTitle,
+                                            {color: textColor},
+                                        ]}>
+                                        Call Log Access
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.cardDescription,
+                                            {color: subtitleColor},
+                                        ]}>
+                                        Allows the app to read your call history
+                                        so it can detect missed or incoming
+                                        calls while your phone is silent
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={onCalllogPermission}>
+                                    <Toggle isOn={isCallLogEnabled} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* sms */}
+                            <View
+                                style={[
+                                    styles.card,
+                                    {backgroundColor: cardColor},
+                                ]}>
+                                <View style={styles.icon}>
+                                    <NotificationIcon
+                                        width={24}
+                                        height={24}
+                                        color={orange}
+                                    />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text
+                                        style={[
+                                            styles.cardTitle,
+                                            {color: textColor},
+                                        ]}>
+                                        SMS Access
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.cardDescription,
+                                            {color: subtitleColor},
+                                        ]}>
+                                        Allows the app to read incoming SMS
+                                        messages so it can detect missed
+                                        messages and notify you even when your
+                                        phone is in silent mode.
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={onSmsPermission}>
+                                    <Toggle isOn={isSmsEnabled} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/*  phone state */}
+                            <View
+                                style={[
+                                    styles.card,
+                                    {backgroundColor: cardColor},
+                                ]}>
+                                <View style={styles.icon}>
+                                    <NotificationIcon
+                                        width={24}
+                                        height={24}
+                                        color={orange}
+                                    />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text
+                                        style={[
+                                            styles.cardTitle,
+                                            {color: textColor},
+                                        ]}>
+                                        Phone State Access
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.cardDescription,
+                                            {color: subtitleColor},
+                                        ]}>
+                                        Allows the app to detect your phone’s
+                                        current state (ringing, idle, or in a
+                                        call) to manage notifications and
+                                        silence mode behavior effectively.
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={onPhoneStatePermission}>
+                                    <Toggle isOn={isPhoneStateEnabled} />
+                                </TouchableOpacity>
+                            </View>
+                        </>
                     )}
-
-                    {/* Notification Permission */}
-                    <View style={[styles.card, {backgroundColor: cardColor}]}>
-                        <View style={styles.icon}>
-                            <NotificationIcon
-                                width={24}
-                                height={24}
-                                color={orange}
-                            />
-                        </View>
-                        <View style={styles.textBlock}>
-                            <Text
-                                style={[styles.cardTitle, {color: textColor}]}>
-                                Notification Access Permission
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.cardDescription,
-                                    {color: subtitleColor},
-                                ]}>
-                                To read and detect missed calls and messages
-                                from other apps while your phone is silent.
-                            </Text>
-                        </View>
-                        <TouchableOpacity onPress={onRnNotificationPermission}>
-                            <Toggle isOn={isRnNotificationsEnabled} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* call log */}
-                    <View style={[styles.card, {backgroundColor: cardColor}]}>
-                        <View style={styles.icon}>
-                            <NotificationIcon
-                                width={24}
-                                height={24}
-                                color={orange}
-                            />
-                        </View>
-                        <View style={styles.textBlock}>
-                            <Text
-                                style={[styles.cardTitle, {color: textColor}]}>
-                                Call Log Access
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.cardDescription,
-                                    {color: subtitleColor},
-                                ]}>
-                                Allows the app to read your call history so it
-                                can detect missed or incoming calls while your
-                                phone is silent
-                            </Text>
-                        </View>
-                        <TouchableOpacity onPress={onCalllogPermission}>
-                            <Toggle isOn={isCallLogEnabled} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* sms */}
-                    <View style={[styles.card, {backgroundColor: cardColor}]}>
-                        <View style={styles.icon}>
-                            <NotificationIcon
-                                width={24}
-                                height={24}
-                                color={orange}
-                            />
-                        </View>
-                        <View style={styles.textBlock}>
-                            <Text
-                                style={[styles.cardTitle, {color: textColor}]}>
-                                SMS Access
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.cardDescription,
-                                    {color: subtitleColor},
-                                ]}>
-                                Allows the app to read incoming SMS messages so
-                                it can detect missed messages and notify you
-                                even when your phone is in silent mode.
-                            </Text>
-                        </View>
-                        <TouchableOpacity onPress={onSmsPermission}>
-                            <Toggle isOn={isSmsEnabled} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/*  phone state */}
-                    <View style={[styles.card, {backgroundColor: cardColor}]}>
-                        <View style={styles.icon}>
-                            <NotificationIcon
-                                width={24}
-                                height={24}
-                                color={orange}
-                            />
-                        </View>
-                        <View style={styles.textBlock}>
-                            <Text
-                                style={[styles.cardTitle, {color: textColor}]}>
-                                Phone State Access
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.cardDescription,
-                                    {color: subtitleColor},
-                                ]}>
-                                Allows the app to detect your phone’s current
-                                state (ringing, idle, or in a call) to manage
-                                notifications and silence mode behavior
-                                effectively.
-                            </Text>
-                        </View>
-                        <TouchableOpacity onPress={onPhoneStatePermission}>
-                            <Toggle isOn={isPhoneStateEnabled} />
-                        </TouchableOpacity>
-                    </View>
                 </Animated.View>
             </ScrollView>
             <View style={styles.customButtonView}>
