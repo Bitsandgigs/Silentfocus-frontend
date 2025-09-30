@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import LogoutIcon from '../assets/svgs/Logout';
-import {useNavigation} from '@react-navigation/native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
     widthPercentageToDP as wp,
@@ -28,7 +27,7 @@ import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {clearLocalStorage} from '../function/commonFunctions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const calendarOptions = ['Google Calendar', 'Outlook Calendar'];
+const calendarOptions = ['Google Calendar'];
 
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
@@ -664,7 +663,7 @@ const styles = StyleSheet.create({
     },
     optionBtn: {
         paddingVertical: hp('1.2%'),
-        borderBottomWidth: 1,
+        // borderBottomWidth: 1,
         borderBottomColor: '#444',
     },
     optionText: {
