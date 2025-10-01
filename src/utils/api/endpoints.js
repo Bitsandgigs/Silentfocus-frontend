@@ -19,6 +19,8 @@ const EndPoints = {
     updateProfile: '/users/{user_id}',
     getUserProfile: '/users/{user_id}',
     socialLogin: 'v1/social-login',
+    whatssAppCalllogs: 'logs',
+    getWhatssAppCalllogs: 'logs',
 };
 
 export default EndPoints;
