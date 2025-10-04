@@ -127,6 +127,9 @@ const PermissionScreen = () => {
         checkLocation();
         checkCalender();
         checkNotification();
+        checkPhoneStatePermission();
+        checkCallLogPermission();
+        checkSmsPermission();
     }, []);
 
     const checkLocation = async () => {
@@ -145,6 +148,23 @@ const PermissionScreen = () => {
         const checkNotificationPermission =
             await Permissions.checkNotificationPermission();
         setIsNotificationsEnabled(checkNotificationPermission);
+    };
+
+    const checkPhoneStatePermission = async () => {
+        const checkPhoneStatePermissionEnable =
+            await Permissions.checkPhoneStatePermission();
+        setIsPhoneStateEnabled(checkPhoneStatePermissionEnable);
+    };
+
+    const checkCallLogPermission = async () => {
+        const checkCallLogPermissionEnable =
+            await Permissions.checkCallLogPermission();
+        setIsCallLogEnabled(checkCallLogPermissionEnable);
+    };
+
+    const checkSmsPermission = async () => {
+        const checkSmsPermissionEnable = await Permissions.checkSMSPermission();
+        setIsSmsEnabled(checkSmsPermissionEnable);
     };
 
     // Function

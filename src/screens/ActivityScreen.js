@@ -14,7 +14,6 @@ import {
 } from 'react-native-responsive-screen';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import CallIcon from '../assets/svgs/Call';
-import MessageIcon from '../assets/svgs/Message';
 import CrossIcon from '../assets/svgs/CrossButton';
 import CallLogs from 'react-native-call-log';
 import SmsAndroid from 'react-native-get-sms-android';

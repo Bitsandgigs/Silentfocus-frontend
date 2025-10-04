@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "457859277881",
+    "project_id": "silencefocus-79821",
+    "storage_bucket": "silencefocus-79821.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:457859277881:android:149e102dbfbe4332d259e8",
+        "android_client_info": {
+          "package_name": "com.SilenceFocus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "457859277881-r51941i5fl41a8cogkrali3043i6g4aj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.SilenceFocus",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwMpraUQzPY9oA8HMGeQ2VszCYqlSEXOU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "457859277881-2gvs4io977pp0032renid9tu6j2i9rkf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.SilenceFocus"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

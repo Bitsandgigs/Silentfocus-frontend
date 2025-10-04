@@ -11,6 +11,7 @@ import {
     TextInput as RNTextInput,
     SafeAreaView,
     Platform,
+    Alert,
 } from 'react-native';
 
 // Lib
@@ -59,6 +60,12 @@ import {
     useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
 import screens from '../utils/theme/screens';
+import {
+    AccessToken,
+    GraphRequest,
+    GraphRequestManager,
+    LoginManager,
+} from 'react-native-fbsdk-next';
 
 export default function LoginScreen() {
     // navigation
@@ -76,6 +83,7 @@ export default function LoginScreen() {
     const [isError, setIsError] = useState(false);
     const [value, setValue] = useState('');
     const [seconds, setSeconds] = useState(60);
+    const isSigninProgress = useRef(false);
     const CELL_COUNT = 4;
 
     const [autoCompleteType, setAutoCompleteType] = useState();
@@ -119,7 +127,8 @@ export default function LoginScreen() {
         try {
             await GoogleSignin.hasPlayServices();
             GoogleSignin.configure({
-                webClientId: Constants.commonConstant.googleLoginWebClientId,
+                webClientId:
+                    '457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com',
                 offlineAccess: true,
                 forceCodeForRefreshToken: true,
             });
@@ -524,6 +533,68 @@ export default function LoginScreen() {
     };
 
     // Social Ligin Function
+    const onPressFaceBookLogin = async () => {
+        try {
+            LoginManager.logOut();
+            const result = await LoginManager.logInWithPermissions(
+                ['public_profile', 'email'],
+                'enabled',
+                'my_nonce',
+            );
+
+            if (!result.isCancelled) {
+                const infoRequest = new GraphRequest(
+                    '/me',
+                    {
+                        parameters: {
+                            fields: {
+                                string: 'first_name,last_name,email',
+                            },
+                        },
+                    },
+                    async (error, userData) => {
+                        if (error) {
+                            // debugLog('Error fetching data:', error);
+                            console.log('Error fetching data:', error);
+                        } else {
+                            // debugLog('userData', userData);
+                            console.log('userData fb login===', userData);
+                            if (userData?.email) {
+                                const result =
+                                    await AccessToken.getCurrentAccessToken();
+                                console.log('result fb login===', userData);
+                                // SocialConnectApi({
+                                //     token: result?.accessToken,
+                                //     register_type: 'facebook',
+                                //     is_connect: true
+                                // });
+                            } else {
+                                // setIsLoading(false);
+                                showAlert(
+                                    localize('FLB26'),
+                                    localize('FLB116').replace(
+                                        'Social',
+                                        'Facebook',
+                                    ),
+                                    localize('FLB27'),
+                                );
+                            }
+                        }
+                    },
+                );
+
+                // Start the graph request
+                new GraphRequestManager().addRequest(infoRequest).start();
+            } else {
+                // setIsLoading(false);
+            }
+        } catch (error) {
+            // setIsLoading(false);
+            // debugLog('Facebook Error ==========', error);
+            console.log('Facebook Error ==========', error);
+        }
+    };
+
     const onPressGoogleLogin = async () => {
         try {
             const hasPlayServices = await GoogleSignin.hasPlayServices({
@@ -535,6 +606,7 @@ export default function LoginScreen() {
             if (hasPlayServices) {
                 const responseData = await GoogleSignin.signIn();
                 console.log('responseData ===>>>', responseData);
+
                 if (responseData.type === 'success') {
                     const payload = {
                         provider: 'google',
@@ -560,6 +632,49 @@ export default function LoginScreen() {
             }
         }
     };
+
+    // Social Ligin Function
+    // const onPressGoogleLogin = async () => {
+    //     if (isSigninProgress.current) return;
+    //     isSigninProgress.current = true;
+    //     const hasPlayServices = await GoogleSignin.hasPlayServices();
+    //     // if (!hasPlayServices) {
+    //     //     return;
+    //     // }
+    //     try {
+    //         // await GoogleSignin.signOut();
+    //         // console.log('hasPlayServices ===>>>', hasPlayServices);
+
+    //         if (hasPlayServices) {
+    //             const responseData = await GoogleSignin.signIn();
+    //             console.log('responseData ===>>>', responseData);
+    //             if (responseData.type === 'success') {
+    //                 const payload = {
+    //                     provider: 'google',
+    //                     token: responseData?.data?.idToken || '',
+    //                 };
+    //                 setIsLoading(true);
+    //                 SocialLoginApiCall(JSON.stringify(payload));
+    //             } else if (responseData.type === 'cancelled') {
+    //                 console.log('Login Cancel ======', responseData);
+    //             }
+    //         } else {
+    //             showAlert(localize('SF29'), localize('SF31'), localize('SF30'));
+    //         }
+    //     } catch (error) {
+    //         if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+    //             console.log('SIGN_IN_CANCELLED', error);
+    //         } else if (error.code === statusCodes.IN_PROGRESS) {
+    //             console.log('IN_PROGRESS', error);
+    //         } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+    //             console.log('PLAY_SERVICES_NOT_AVAILABLE', error);
+    //         } else {
+    //             console.log('Last Error', error);
+    //             console.log('Last Error', JSON.stringify(error));
+    //             // Alert.alert('Error', JSON.stringify(error));
+    //         }
+    //     }
+    // };
 
     // Render Component
     return (
@@ -828,7 +943,8 @@ export default function LoginScreen() {
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
-                                        style={styles.socialButtonModern}>
+                                        style={styles.socialButtonModern}
+                                        onPress={onPressFaceBookLogin}>
                                         <Image
                                             source={require('../assets/images/facebook.png')}
                                             style={styles.socialIconModern}

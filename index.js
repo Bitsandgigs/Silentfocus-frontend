@@ -322,7 +322,7 @@ const headlessNotificationListener = async notification => {
             // await saveWhatsappNotification(cleanData);
 
             // ✅ Send to API
-            await SendNotificationToApi(cleanData);
+            // await SendNotificationToApi(cleanData);
 
             console.log('🚀 STORED & SENT DATA ===>', cleanData);
         }

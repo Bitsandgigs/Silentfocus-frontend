@@ -14,8 +14,13 @@ export const commonConstant = {
     appUserId: 0,
     appUser: defaultUser,
     appToken: '',
+    FacebookId: '686914099572467',
+    // googleLoginWebClientId:
+    //     '457859277881-uihttt1cgmdfkv5c61vr24sflvp84do6.apps.googleusercontent.com',
     googleLoginWebClientId:
         '457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com',
+
+    //  457859277881-dlmhgg6srj7e8cto3dms392v7br5fbl7.apps.googleusercontent.com
 
     // animation Timing
     animTime100: 100,

@@ -1,4 +1,4 @@
-package com.silence_focus
+package com.SilenceFocus
 
 import android.app.NotificationManager
 import android.content.Context

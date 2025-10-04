@@ -1,4 +1,4 @@
-package com.silence_focus
+package com.SilenceFocus
 
 import android.os.Bundle
 import com.facebook.react.ReactActivity

@@ -12,6 +12,7 @@ const Images = {
     iconLocation: require('../../assets/images/iconLocation.png'),
     iconCalendar: require('../../assets/images/iconCalendar.png'),
     iconCustom: require('../../assets/images/iconCustom.png'),
+    iconMsg: require('../../assets/images/iconMsg.png'),
 };
 
 export default Images;
