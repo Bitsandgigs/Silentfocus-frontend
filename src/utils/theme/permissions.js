@@ -146,44 +146,6 @@ const requestPhoneStatePermission = async handleCallLog => {
     }
 };
 
-const checkCallLogPermission = async () => {
-    if (Platform.OS === 'android') {
-        const result = await check(PERMISSIONS.ANDROID.READ_CALL_LOG);
-        return result === RESULTS.GRANTED;
-    }
-    return false; // iOS does not support this
-};
-
-const requestCallLogPermission = async handleCallLog => {
-    if (Platform.OS === 'android') {
-        const result = await request(PERMISSIONS.ANDROID.READ_CALL_LOG);
-        if (result === RESULTS.GRANTED) {
-            handleCallLog();
-        } else {
-            openSettings().catch(() => {});
-        }
-    }
-};
-
-const checkSMSPermission = async () => {
-    if (Platform.OS === 'android') {
-        const result = await check(PERMISSIONS.ANDROID.READ_SMS);
-        return result === RESULTS.GRANTED;
-    }
-    return false; // iOS does not support this
-};
-
-const requestSMSPermission = async handleSMS => {
-    if (Platform.OS === 'android') {
-        const result = await request(PERMISSIONS.ANDROID.READ_SMS);
-        if (result === RESULTS.GRANTED) {
-            handleSMS();
-        } else {
-            openSettings().catch(() => {});
-        }
-    }
-};
-
 const Permissions = {
     checkLocationPermission,
     requestLocationPermission,
@@ -193,10 +155,6 @@ const Permissions = {
     requestNotificationPermission,
     checkPhoneStatePermission,
     requestPhoneStatePermission,
-    checkCallLogPermission,
-    requestCallLogPermission,
-    checkSMSPermission,
-    requestSMSPermission,
 };
 
 export default Permissions;

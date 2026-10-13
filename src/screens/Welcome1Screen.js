@@ -272,14 +272,6 @@ const styles = StyleSheet.create({
     lineHeight: moderateScale(20),
     marginBottom: hp('6%'),
   },
-  description: {
-    fontSize: moderateScale(14),
-    fontWeight: '600',
-    textAlign: 'center', // corrected spelling
-    alignSelf: 'center', // changed from 'flex-start'
-    lineHeight: moderateScale(20),
-    marginBottom: hp('6%'),
-  },
 
   image: {
     width: wp('90%'),

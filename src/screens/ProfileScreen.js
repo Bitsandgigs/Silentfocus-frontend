@@ -20,19 +20,35 @@ import {
     heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import {Constants} from '../utils/theme';
-import {showAlert} from '../function/Alert';
+import {
+    showAlert,
+    showAlertWithTwoCallBack,
+    showApiErrorAlert,
+} from '../function/Alert';
+import {deleteAccount} from '../utils/account';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {clearLocalStorage} from '../function/commonFunctions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const calendarOptions = ['Google Calendar'];
+import DeviceInfo from 'react-native-device-info';
+import {syncAutomationSettings} from '../utils/automationSync';
+import {prepareUserLogout} from '../utils/serverSync';
+import {syncDeviceCalendar} from '../utils/silentFocusEngine';
+import {requestCalendarPermission} from '../utils/locationPermissions';
+import PermissionHub from '../componentes/PermissionHub';
+import {clearLearnedNow, confirmClearActivity} from '../utils/privacyActions';
+import {getLearningState} from '../utils/learning';
+import {useIsFocused} from '@react-navigation/native';
+import {LIGHT_CONTROLS, linkColor} from '../utils/theme/controlColors';
+import CalendarPickerModal from '../componentes/CalendarPickerModal';
+import {describeSelection, getDeviceCalendars, saveCalendarSelection} from '../utils/deviceCalendars';
 
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
 const ProfileScreen = () => {
-    const [calendarProvider, setCalendarProvider] = useState(null);
+    // Round 3 (#4): which of the phone's calendars are used (summary line).
+    const [calendarSummary, setCalendarSummary] = useState(null);
     const [isCalendarSynced, setIsCalendarSynced] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
 
@@ -40,16 +56,26 @@ const ProfileScreen = () => {
     const [isEditingPhone, setIsEditingPhone] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
+    const [changePasswordModalVisible, setChangePasswordModalVisible] =
+        useState(false);
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+
     const phoneInputRef = useRef(null);
+    // Last phone number the server confirmed; the auto-save skips it so
+    // opening Profile never re-sends the number it just loaded.
+    const savedPhoneRef = useRef('');
 
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
 
     const background = isDark ? '#111' : '#fff';
     const card = isDark ? 'rgba(85,85,85,0.12)' : '#2E3A3E14';
-    const text = isDark ? '#eee' : '#999';
-    const mutedText = isDark ? '#aaa' : '#999';
+    const text = isDark ? '#eee' : LIGHT_CONTROLS.mutedText;
+    const mutedText = isDark ? '#aaa' : LIGHT_CONTROLS.mutedText;
     const divider = isDark ? 'rgba(85,85,85,0.35)' : '#ccc';
+    const link = linkColor(isDark);
 
     useEffect(() => {
         loadCalendarSyncStatus();
@@ -62,7 +88,7 @@ const ProfileScreen = () => {
                 setIsCalendarSynced(JSON.parse(storedStatus)); // convert string to boolean
             }
         } catch (error) {
-            console.error('Error loading calendar sync status:', error);
+            console.error('Error loading calendar sync status:', error?.message);
         }
     };
 
@@ -73,31 +99,107 @@ const ProfileScreen = () => {
                 JSON.stringify(status),
             );
         } catch (error) {
-            console.error('Error saving calendar sync status:', error);
+            console.error('Error saving calendar sync status:', error?.message);
         }
     };
 
-    const handleSelectProvider = provider => {
-        setCalendarProvider(provider);
-        setIsCalendarSynced(true);
-        saveCalendarSyncStatus(true);
+    const askCalendarPermission = async () => {
+        const permission = await requestCalendarPermission();
+        if (permission === 'denied') {
+            showAlert(
+                Constants.commonConstant.appName,
+                'Calendar access was not allowed, so meetings will not silence your phone. Your other settings still work.',
+            );
+        }
+        return permission;
+    };
+
+    // Round 3 (#4): connecting = allow Silent Focus to read this phone's
+    // calendars, then choose which ones (Google, Samsung, Outlook /
+    // Exchange, local...). The native engine silences during their events;
+    // nothing is uploaded or turned into schedules.
+    const openCalendarPicker = async () => {
+        const permission = await askCalendarPermission();
+        if (permission === 'granted') setModalVisible(true);
+    };
+
+    const refreshCalendarSummary = async () => {
+        try {
+            const result = await getDeviceCalendars();
+            setCalendarSummary(
+                result?.permission === 'granted'
+                    ? describeSelection(result.selection, result.calendars)
+                    : 'Calendar access is off. Tap "Change calendars" to allow it.',
+            );
+        } catch (e) {
+            setCalendarSummary(null);
+        }
+    };
+
+    const handleSaveCalendars = async ids => {
+        try {
+            await saveCalendarSelection(ids);
+        } catch (e) {
+            showAlert(Constants.commonConstant.appName, 'Your calendar choice could not be saved. Please try again.');
+            return;
+        }
         setModalVisible(false);
+        setIsCalendarSynced(true);
+        await saveCalendarSyncStatus(true);
+        await syncAutomationSettings().catch(() => null);
+        syncDeviceCalendar().catch(() => {});
+        refreshCalendarSummary();
     };
 
-    const handleDisconnectCalendar = () => {
+    const handleDisconnectCalendar = async () => {
         setIsCalendarSynced(false);
-        setCalendarProvider(null);
-        saveCalendarSyncStatus(false);
+        setCalendarSummary(null);
+        await saveCalendarSyncStatus(false);
+        // Turns calendar automation off natively and clears its cache.
+        syncAutomationSettings().catch(() => {});
     };
 
-    const onPressLogOut = () => {
-        const payload = {
-            user_id: Constants.commonConstant.appUserId
-                ? Constants.commonConstant.appUserId
-                : '',
-        };
+    // Learned-places count for "Clear learned locations" (refreshed on focus).
+    const [learnedCount, setLearnedCount] = useState(0);
+    const isScreenFocused = useIsFocused();
+    useEffect(() => {
+        if (isScreenFocused && isCalendarSynced) refreshCalendarSummary();
+    }, [isScreenFocused, isCalendarSynced]);
+    useEffect(() => {
+        if (!isScreenFocused) return;
+        getLearningState()
+            .then(state => setLearnedCount(state?.placeCount || 0))
+            .catch(() => {});
+    }, [isScreenFocused]);
+
+    const onClearLearned = async () => {
+        const next = await clearLearnedNow();
+        if (next) {
+            setLearnedCount(next.placeCount || 0);
+        }
+    };
+
+    const onPressLogOut = async () => {
+        let deviceId = '';
+        try {
+            deviceId = await DeviceInfo.getUniqueId();
+        } catch (e) {
+            // Logout must not depend on the device id being available.
+        }
         setIsLoading(true);
-        LogOutApiCall(payload);
+        // While the token is still valid: one bounded sync, then keep this
+        // account's not-yet-backed-up activity in its outbox. If that can't
+        // be saved, stay signed in rather than lose it.
+        const prepared = await prepareUserLogout().catch(() => ({ok: false}));
+        if (!prepared.ok) {
+            setIsLoading(false);
+            showAlert(
+                Constants.commonConstant.appName,
+                "Some activity hasn't been backed up yet and couldn't be saved on this phone, so you're still signed in. Please try again.",
+            );
+            return;
+        }
+        LogOutApiCall({device_id: deviceId});
     };
 
     const onPressModifyFilters = timestamp => {
@@ -122,7 +224,10 @@ const ProfileScreen = () => {
         if (!phoneNumber) return;
 
         const timeout = setTimeout(() => {
-            if (phoneNumber.length === 10) {
+            if (
+                phoneNumber.length === 10 &&
+                phoneNumber !== savedPhoneRef.current
+            ) {
                 const payload = {
                     username: Constants.commonConstant.appUser.username
                         ? Constants.commonConstant.appUser.username
@@ -146,104 +251,65 @@ const ProfileScreen = () => {
             `${Constants.commonConstant.appUserId}`,
         );
 
-        await APICall('put', payload, url).then(response => {
-            setIsLoading(false);
-            console.log('responseData', response);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-                console.log('responseData', responseData);
-
-                if (responseData?.status === '1') {
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidData
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.message);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('put', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            response?.data?.status === '1'
+        ) {
+            savedPhoneRef.current =
+                response.data.result?.phone_number ?? payload.phone_number;
+        } else {
+            showApiErrorAlert(Constants.commonConstant.appName, response);
+        }
     };
 
+    // Response: {status, message, result: {user_id, username, email,
+    // phone_number, created_at}}.
     const GetUserProfileApiCall = async payload => {
         let url = EndPoints.getUserProfile.replace(
             '{user_id}',
             `${Constants.commonConstant.appUserId}`,
         );
 
-        await APICall('get', payload, url).then(response => {
-            setIsLoading(false);
-            console.log('get_user_profile_response1==', response);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-                console.log('get_user_profile_response==', responseData);
-                const phoneNumber = responseData?.phone_number || '';
-                setPhoneNumber(phoneNumber);
-                if (responseData?.status === '1') {
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidData
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.message);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('get', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            response?.data?.status === '1'
+        ) {
+            const loadedPhone = response.data.result?.phone_number || '';
+            savedPhoneRef.current = loadedPhone;
+            setPhoneNumber(loadedPhone);
+        } else {
+            showApiErrorAlert(Constants.commonConstant.appName, response);
+        }
     };
 
-    const LogOutApiCall = async payload => {
-        const url = EndPoints.logOut;
+    const ChangePasswordApiCall = async () => {
+        if (!oldPassword || !newPassword || !confirmPassword) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'Please fill all password fields.',
+            );
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'New password and confirm password do not match.',
+            );
+            return;
+        }
 
+        const url = EndPoints.changePassword;
+        const payload = {
+            old_password: oldPassword,
+            new_password: newPassword,
+            confirm_password: confirmPassword,
+        };
+
+        setIsLoading(true);
         await APICall('post', payload, url).then(response => {
             setIsLoading(false);
             if (
@@ -251,35 +317,81 @@ const ProfileScreen = () => {
                 response?.data
             ) {
                 const responseData = response?.data;
-
                 if (responseData?.status === '1') {
-                    clearLocalStorage();
-                } else if (responseData?.status === '0') {
+                    setChangePasswordModalVisible(false);
+                    setOldPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
                     showAlert(
                         Constants.commonConstant.appName,
-                        responseData?.message,
+                        responseData?.message || 'Password updated successfully.',
                     );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
+    };
+
+    // Best-effort server logout (token revoke), then always sign out
+    // locally - a failed/slow/offline backend must never keep the user in.
+    const LOGOUT_SERVER_TIMEOUT_MS = 10000;
+    const LogOutApiCall = async payload => {
+        const url = EndPoints.logOut;
+        try {
+            await Promise.race([
+                APICall('post', payload, url),
+                new Promise(resolve =>
+                    setTimeout(resolve, LOGOUT_SERVER_TIMEOUT_MS),
+                ),
+            ]);
+        } catch (e) {
+            // Ignored: local logout below still happens.
+        }
+        setIsLoading(false);
+        await clearLocalStorage();
+    };
+
+    // Two explicit confirmations, then DELETE /account. Local data is
+    // removed and the user is signed out only after the server confirmed.
+    const onPressDeleteAccount = () => {
+        showAlertWithTwoCallBack(
+            'Delete account?',
+            'This permanently deletes your Silent Focus account, including your silent zones, schedules, settings and synced history. This cannot be undone.',
+            'Cancel',
+            () => {},
+            'Continue',
+            () =>
+                showAlertWithTwoCallBack(
+                    'Are you sure?',
+                    'Your account will be deleted now and you will be signed out of this phone.',
+                    'Cancel',
+                    () => {},
+                    'Delete',
+                    DeleteAccountApiCall,
+                ),
+        );
+    };
+
+    const DeleteAccountApiCall = async () => {
+        setIsLoading(true);
+        let result;
+        try {
+            result = await deleteAccount();
+        } catch (e) {
+            result = {ok: false, response: undefined};
+        }
+        setIsLoading(false);
+        if (!result.ok) {
+            showApiErrorAlert(
+                Constants.commonConstant.appName,
+                result.response,
+                'Your account could not be deleted. Please try again.',
+            );
+        }
+        // On success the session is cleared and the app returns to sign-in.
     };
 
     return (
@@ -331,7 +443,7 @@ const ProfileScreen = () => {
                                         {color: text, padding: 0},
                                     ]}
                                     placeholder="+ Add Phone Number"
-                                    placeholderTextColor="#D6721E"
+                                    placeholderTextColor={link}
                                     maxLength={12}
                                 />
                             ) : (
@@ -343,7 +455,7 @@ const ProfileScreen = () => {
                                             {
                                                 color: phoneNumber
                                                     ? text
-                                                    : '#D6721E',
+                                                    : link,
                                             },
                                         ]}>
                                         {phoneNumber || '+ Add Phone Number'}
@@ -364,7 +476,7 @@ const ProfileScreen = () => {
                         <Field
                             label="Calendar Sync"
                             value={isCalendarSynced ? 'Active' : 'Inactive'}
-                            color={isCalendarSynced ? '#34A853' : '#999'}
+                            color={isCalendarSynced ? '#34A853' : mutedText}
                         />
                     </View>
                     <Separator divider={divider} />
@@ -376,7 +488,7 @@ const ProfileScreen = () => {
                             <Field
                                 label="Event Filters"
                                 value="Modify Filters"
-                                color="#D6721E"
+                                color={link}
                             />
                         </TouchableOpacity>
                     </View>
@@ -388,30 +500,66 @@ const ProfileScreen = () => {
                                 style={[
                                     styles.providerText,
                                     {color: mutedText},
-                                ]}>
-                                {calendarProvider}
+                                ]}
+                                testID="calendar-summary">
+                                {calendarSummary || 'Calendars on this phone'}
                             </Text>
                             <TouchableOpacity
-                                onPress={handleDisconnectCalendar}>
-                                <Text style={styles.disconnect}>
+                                onPress={openCalendarPicker}
+                                accessibilityRole="button">
+                                <Text style={[styles.disconnect, {color: link}]}>
+                                    Change calendars
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleDisconnectCalendar}
+                                accessibilityRole="button">
+                                <Text style={[styles.disconnect, {color: link}]}>
                                     Disconnect Calendar
                                 </Text>
                             </TouchableOpacity>
                         </>
                     ) : (
-                        <TouchableOpacity onPress={() => setModalVisible(true)}>
-                            <Text style={styles.syncNow}>
+                        <TouchableOpacity onPress={openCalendarPicker} accessibilityRole="button">
+                            <Text style={[styles.syncNow, {color: link}]}>
                                 + Sync a Calendar
                             </Text>
                         </TouchableOpacity>
                     )}
                 </Section>
-                {/* Permission */}
+                {/* Permissions (moved from Control; live status - Client Issue #7) */}
+                <View style={styles.section}>
+                    <SectionTitle>Permissions</SectionTitle>
+                    <PermissionHub />
+                </View>
 
-                <Section
-                    title="Permissions & Privacy"
-                    // height={109}
-                    cardColor={card}>
+                {/* Privacy & Data (moved from Control - Client Issue #7) */}
+                <Section title="Privacy & Data" cardColor={card}>
+                    <Text style={[styles.privacyNote, {color: mutedText}]}>
+                        Activity is kept on this phone for up to 30 days (200 entries) and session history for
+                        up to 90 days. Logging out clears both.
+                    </Text>
+                    <Separator divider={divider} />
+                    <Pressable
+                        style={styles.fieldRow}
+                        accessibilityRole="button"
+                        onPress={() => confirmClearActivity()}>
+                        <Field label="Clear activity history" textColor={text} />
+                    </Pressable>
+                    <Separator divider={divider} />
+                    <Pressable
+                        style={styles.fieldRow}
+                        accessibilityRole="button"
+                        onPress={onClearLearned}>
+                        <Field
+                            label={`Clear learned locations${learnedCount ? ` (${learnedCount})` : ''}`}
+                            textColor={text}
+                        />
+                    </Pressable>
+                </Section>
+
+                {/* Legal */}
+                <Section title="Legal" cardColor={card}>
                     <View style={styles.fieldRow}>
                         <Field label="Terms of Service" textColor={text} />
                     </View>
@@ -421,25 +569,23 @@ const ProfileScreen = () => {
                     </View>
                 </Section>
 
-                {/* Legal */}
-                <Section
-                    title="Data & Legal "
-                    // height={109}
-                    cardColor={card}>
-                    <View style={styles.fieldRow}>
-                        <Field
-                            label="Active Permissions"
-                            value="Location,Calendar,Notification"
-                            color={mutedText}
-                        />
-                    </View>
-                    <Separator divider={divider} />
-                    <View style={styles.fieldRow}>
+                {/* Account */}
+                <Section title="Account" cardColor={card}>
+                    <Pressable
+                        style={styles.fieldRow}
+                        onPress={() => setChangePasswordModalVisible(true)}>
                         <Field
                             label="Add or Change Password"
                             textColor={text}
                         />
-                    </View>
+                    </Pressable>
+                    <Separator divider={divider} />
+                    <Pressable
+                        style={styles.fieldRow}
+                        accessibilityRole="button"
+                        onPress={onPressDeleteAccount}>
+                        <Field label="Delete Account" textColor={text} />
+                    </Pressable>
                 </Section>
 
                 {/* Logout */}
@@ -458,28 +604,63 @@ const ProfileScreen = () => {
                     </TouchableOpacity>
                 </View>
 
-                {/* Sync Modal */}
-                <Modal transparent animationType="fade" visible={modalVisible}>
+                {/* Calendar picker (Round 3 #4): every calendar on this phone */}
+                <CalendarPickerModal
+                    visible={modalVisible}
+                    onClose={() => setModalVisible(false)}
+                    onSave={handleSaveCalendars}
+                    onRequestPermission={askCalendarPermission}
+                />
+
+                {/* Change Password Modal */}
+                <Modal
+                    transparent
+                    animationType="fade"
+                    visible={changePasswordModalVisible}>
                     <Pressable
                         style={styles.modalBackdrop}
-                        onPress={() => setModalVisible(false)}>
-                        <View
+                        onPress={() => setChangePasswordModalVisible(false)}>
+                        <Pressable
                             style={[
                                 styles.modalBox,
                                 {backgroundColor: isDark ? '#222' : '#fff'},
-                            ]}>
+                            ]}
+                            onPress={() => {}}>
                             <Text style={[styles.modalTitle, {color: text}]}>
-                                Choose Calendar Provider
+                                Change Password
                             </Text>
-                            {calendarOptions.map(opt => (
-                                <TouchableOpacity
-                                    key={opt}
-                                    onPress={() => handleSelectProvider(opt)}
-                                    style={styles.optionBtn}>
-                                    <Text style={styles.optionText}>{opt}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
+                            <TextInput
+                                value={oldPassword}
+                                onChangeText={setOldPassword}
+                                placeholder="Current Password"
+                                placeholderTextColor="#999"
+                                secureTextEntry
+                                style={[styles.modalInput, {color: text}]}
+                            />
+                            <TextInput
+                                value={newPassword}
+                                onChangeText={setNewPassword}
+                                placeholder="New Password"
+                                placeholderTextColor="#999"
+                                secureTextEntry
+                                style={[styles.modalInput, {color: text}]}
+                            />
+                            <TextInput
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                                placeholder="Confirm New Password"
+                                placeholderTextColor="#999"
+                                secureTextEntry
+                                style={[styles.modalInput, {color: text}]}
+                            />
+                            <TouchableOpacity
+                                style={styles.modalSubmitBtn}
+                                onPress={ChangePasswordApiCall}>
+                                <Text style={styles.modalSubmitText}>
+                                    Update Password
+                                </Text>
+                            </TouchableOpacity>
+                        </Pressable>
                     </Pressable>
                 </Modal>
             </ScrollView>
@@ -489,9 +670,19 @@ const ProfileScreen = () => {
 };
 
 // Reusable components
+// Light mode: #888 on white was 3.5:1.
+const SectionTitle = ({children}) => {
+    const isDark = useColorScheme() === 'dark';
+    return (
+        <Text style={[styles.sectionTitle, !isDark && {color: LIGHT_CONTROLS.mutedText}]}>
+            {children}
+        </Text>
+    );
+};
+
 const Section = ({title, children, height, cardColor}) => (
     <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <SectionTitle>{title}</SectionTitle>
         <View style={[styles.sectionBox, {height, backgroundColor: cardColor}]}>
             {children}
         </View>
@@ -501,8 +692,8 @@ const Section = ({title, children, height, cardColor}) => (
 const Field = ({label, value, color, textColor}) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
-    const defaultLabelColor = isDark ? '#eee' : '#999';
-    const defaultValueColor = isDark ? '#aaa' : '#999';
+    const defaultLabelColor = isDark ? '#eee' : LIGHT_CONTROLS.mutedText;
+    const defaultValueColor = isDark ? '#aaa' : LIGHT_CONTROLS.mutedText;
 
     return (
         <View style={styles.rowHeader}>
@@ -538,6 +729,11 @@ const Separator = ({divider}) => {
 };
 
 const styles = StyleSheet.create({
+    privacyNote: {
+        fontSize: 13,
+        lineHeight: 18,
+        paddingVertical: 10,
+    },
     container: {
         flex: 1,
         paddingTop: hp('1%'),
@@ -669,6 +865,27 @@ const styles = StyleSheet.create({
     optionText: {
         color: '#D6721E',
         fontSize: wp('3.5%'),
+        textAlign: 'center',
+    },
+    modalInput: {
+        borderRadius: wp('2%'),
+        borderWidth: 1,
+        borderColor: '#5555551F',
+        paddingHorizontal: wp('3%'),
+        paddingVertical: hp('1.2%'),
+        fontSize: wp('3.5%'),
+        marginBottom: hp('1.2%'),
+    },
+    modalSubmitBtn: {
+        backgroundColor: '#ff6600',
+        borderRadius: wp('2%'),
+        paddingVertical: hp('1.3%'),
+        marginTop: hp('0.5%'),
+    },
+    modalSubmitText: {
+        color: '#fff',
+        fontSize: wp('3.7%'),
+        fontWeight: 'bold',
         textAlign: 'center',
     },
 });

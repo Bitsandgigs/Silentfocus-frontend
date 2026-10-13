@@ -7,35 +7,55 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Call Logs -->
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Silent Focus automation engine: re-arm alarms after reboot, and fire
+         schedule boundaries on time (user-granted "Alarms & reminders" on
+         Android 12+; the engine falls back to inexact alarms without it). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Break-through calls: know when a ringing call stops (PHONE_STATE,
+         no number is read). Caller numbers come from the user-granted
+         call-screening role instead of call-log access. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
-    <!-- SMS -->
-    <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- Emergency contacts: Telecom only lets the call-screening app see
+         calls from saved contacts when it holds READ_CONTACTS (verified on
+         API 36: "contact exists" calls skip the screening service otherwise).
+         Asked for only on the Emergency Contacts screen; contacts are never
+         read in bulk or uploaded - the picker supplies the chosen number. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- Call log and SMS access are not used (Play-restricted). Kept as a
+         guard so no library can merge them back in. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
+
+    <!-- Android 11+ only delivers PACKAGE_DATA_CLEARED for visible packages. -->
+    <queries>
+        <package android:name="com.google.android.gms" />
+        <!-- #9/#11: Activity call rows open WhatsApp when its notification is gone. -->
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+    </queries>
 
 
     <application
-      android:name="MainApplication"
-      android:label="@string/app_name"
-      android:icon="@mipmap/ic_launcher"
-      android:roundIcon="@mipmap/ic_launcher_round"
-      android:allowBackup="false"
-      android:theme="@style/AppTheme"
+        android:name="MainApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="false"
+        android:theme="@style/AppTheme"
+        android:supportsRtl="true" >
+        <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id" />
+        <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token" />
 
-          android:supportsRtl="true"
-            >
-
-    <!--        android:usesCleartextTraffic="true"-->
-<!--        android:networkSecurityConfig="@xml/network_security_config"-->
-
-      <activity
+    <activity
         android:name="MainActivity"
         android:label="@string/app_name"
         android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
@@ -46,28 +66,91 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
-      </activity>
-        <meta-data
-              android:name="com.google.android.geo.API_KEY"
-              android:value="AIzaSyDCLTglwawax2XO4iC9tj90QmMlAR6Lxc4" />
-        <service
-            android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
-            android:foregroundServiceType="dataSync"
-            android:enabled="true"
+    </activity>
+    <!-- Crash reporting: on for release builds only (build.gradle). -->
+    <meta-data
+        android:name="firebase_crashlytics_collection_enabled"
+        android:value="${crashlyticsEnabled}" />
+    <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="${mapsApiKey}" />
+
+        <!-- Automation engine: schedule boundary alarms (app-internal only). -->
+        <receiver
+            android:name=".automation.AutomationAlarmReceiver"
             android:exported="false" />
 
+        <!-- Automation engine: Silent Zone enter/exit from Play Services
+             geofencing (app-internal PendingIntent only). -->
         <receiver
-            android:name="com.lesimoes.androidnotificationlistener.BootUpReceiver"
-            android:enabled="false"
-            tools:replace="android:enabled" />
+            android:name=".automation.GeofenceEventReceiver"
+            android:exported="false" />
 
+        <!-- Automation engine: re-read the device calendar after it changes
+             (content-URI job) and every 12 h. -->
+        <service
+            android:name=".automation.CalendarRefreshJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
 
-        <!--        <service-->
-<!--            android:name="com.zoontek.rnandroidnotificationlistener.NotificationListenerService"-->
-<!--            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">-->
-<!--            <intent-filter>-->
-<!--                <action android:name="android.service.notification.NotificationListenerService" />-->
-<!--            </intent-filter>-->
-<!--        </service>-->
+        <!-- Automation engine: rebuild alarms / re-apply state. These are
+             system broadcasts, which exported="false" receivers still get. -->
+        <receiver
+            android:name=".automation.SystemEventReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+            <!-- Play Services data cleared: its geofences are gone. -->
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_DATA_CLEARED" />
+                <data android:scheme="package" android:ssp="com.google.android.gms" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Automation engine: re-register Silent Zone geofences after device
+             Location is switched back on, Play Services data is cleared, and
+             every 12 h (JobScheduler, no polling service). -->
+        <service
+            android:name=".automation.GeofenceRecoveryJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+
+        <!-- Phase 4: emergency / urgent callers. Only bound by Telecom while
+             the user has chosen Silent Focus as call-screening app; it never
+             blocks or silences calls. -->
+        <service
+            android:name=".comms.SilentFocusCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- Phase 4: end a break-through when the phone stops ringing. -->
+        <receiver
+            android:name=".comms.PhoneStateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Phase 4: native notification listener (messages while silent,
+             inline auto reply). -->
+        <service
+            android:name=".comms.SilentFocusNotificationListener"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -1,23 +1,16 @@
 buildscript {
-    ext {
-        buildToolsVersion = "35.0.0"
-        minSdkVersion = 24
-        compileSdkVersion = 35
-        targetSdkVersion = 35
-        ndkVersion = "27.1.12297006"
-        kotlinVersion = "2.0.21"
-    }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
-        classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
-        classpath 'com.google.gms:google-services:4.4.3'
+        classpath("com.google.gms:google-services:4.4.0")
+        // Crash reporting (native; JS errors are forwarded scrubbed, see errorReporting.js)
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.2")
     }
 }
 
-apply plugin: "com.facebook.react.rootproject"
-//apply plugin: 'com.google.gms.google-services'
+plugins {
+    id("com.facebook.react.rootproject")
+    id("com.google.gms.google-services") version "4.4.0" apply false
+}

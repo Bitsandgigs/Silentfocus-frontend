@@ -119,13 +119,14 @@ export default function CustomTextInputView(props) {
                         numberOfLines={1}
                         style={[
                             styles.textView,
-                            textStyle,
                             {
                                 color:
                                     value !== ''
                                         ? Colors.black
                                         : Colors.placeHolder,
                             },
+                            // The caller's colour wins (e.g. dark mode).
+                            textStyle,
                         ]}>
                         {value !== '' ? value : placeholder}
                     </Text>

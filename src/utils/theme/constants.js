@@ -8,7 +8,7 @@ export const defaultUser = {
 };
 
 export const commonConstant = {
-    appName: 'Silence Focus',
+    appName: 'Silent Focus',
     scrWidth: Dimensions.get('screen').width,
     scrHeight: Dimensions.get('screen').height,
     appUserId: 0,
@@ -45,6 +45,8 @@ export const commonConstant = {
 };
 
 export const apiStatusCode = {
+    // Request never got an HTTP response (offline, DNS, timeout, TLS...)
+    networkError: 0,
     success: 200,
     invalidData: 400,
     invalidContent: 404,

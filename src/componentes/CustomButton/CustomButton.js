@@ -13,6 +13,7 @@ export default function CustomButton(props) {
         buttonStyle = {},
         textStyle = {},
         disabled = false,
+        color = Colors.themeColor,
     } = props;
 
     // Render Component
@@ -25,7 +26,7 @@ export default function CustomButton(props) {
                 styles.buttonContainer,
                 buttonStyle,
                 {
-                    backgroundColor: disabled ? Colors.hideThemeColor : Colors.themeColor,
+                    backgroundColor: disabled ? Colors.hideThemeColor : color,
                 },
             ]}>
             <View style={[CommonStyle.flex, CommonStyle.centerItem]}>

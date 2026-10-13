@@ -40,7 +40,7 @@ import {AppContext} from '../utils/context/contextProvider';
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {showAlert} from '../function/Alert';
+import {showApiErrorAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {
     useBlurOnFulfill,
@@ -127,7 +127,6 @@ export default function ForgotPasswordScreen() {
         validateOnChange: hasErrors,
         validateOnMount: false,
         onSubmit: values => {
-            console.log(values);
             const payload = {
                 email: values.email ? values.email : '',
             };
@@ -158,30 +157,11 @@ export default function ForgotPasswordScreen() {
                     navigation.navigate(screens.VerifyOtpScreen, {
                         email: payload.email,
                     });
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };

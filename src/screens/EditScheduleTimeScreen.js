@@ -23,10 +23,12 @@ import {height, localize, width} from '../function/commonFunctions';
 import BackIcon from '../assets/svgs/Back';
 import {Colors, Constants, Images, Responsive} from '../utils/theme';
 import CustomDateTimePicker from '../componentes/CustomDateTimePicker/CustomDateTimePicker';
-import {showAlert, showAlertWithOneCallBack} from '../function/Alert';
+import {showAlertWithOneCallBack, showApiErrorAlert} from '../function/Alert';
 import CustomButton from '../componentes/CustomButton/CustomButton';
+import {controlColors} from '../utils/theme/controlColors';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
+import {DAY_NAMES, buildSchedulePayload, toggleDay} from '../utils/scheduleRules';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function EditScheduleTimeScreen() {
@@ -38,6 +40,8 @@ export default function EditScheduleTimeScreen() {
 
     // Variable
     const isDark = useColorScheme() === 'dark';
+    // Readable in dark mode (Client Issue #2); light mode unchanged.
+    const palette = controlColors(isDark);
 
     // Array
     const arrDaysOfWeek = [
@@ -54,66 +58,49 @@ export default function EditScheduleTimeScreen() {
     const [arraySelectedDays, setArraySelectedDays] = useState([]);
 
     const [fromTime, setFromTime] = useState(
-        moment(moment().format('YYYY-MM-DD') + ' ' + '08:00')
-            .utc()
-            .toDate(),
+        moment(moment().format('YYYY-MM-DD') + ' ' + '08:00').toDate(),
     );
     const [isFromTimeModalVisible, setIsFromTimeModalVisible] = useState(false);
     const [fromTimeString, setFromTimeString] = useState('');
 
     const [toTime, setToTime] = useState(
-        moment(moment().format('YYYY-MM-DD') + ' ' + '08:00')
-            .utc()
-            .toDate(),
+        moment(moment().format('YYYY-MM-DD') + ' ' + '08:00').toDate(),
     );
     const [isToTimeModalVisible, setIsToTimeModalVisible] = useState(false);
     const [toTimeString, setToTimeString] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    // Prefill from Home's row: times arrive as 24h "HH:mm[:ss]" and are
+    // shown/submitted like the create screen ("hh:mm A" -> "HH:mm").
     useEffect(() => {
-        if (scheduleData) {
-            console.log('Schedule Data in Edit Screen:', scheduleData);
-
-            // Set From Time
-            if (scheduleData.startTime) {
-                setFromTimeString(scheduleData.startTime);
-                setFromTime(
-                    moment(
-                        moment().format('YYYY-MM-DD') +
-                            ' ' +
-                            scheduleData.startTime,
-                    )
-                        .utc()
-                        .toDate(),
-                );
-            }
-
-            // Set To Time
-            if (scheduleData.endTime) {
-                setToTimeString(scheduleData.endTime);
-                setToTime(
-                    moment(
-                        moment().format('YYYY-MM-DD') +
-                            ' ' +
-                            scheduleData.endTime,
-                    )
-                        .utc()
-                        .toDate(),
-                );
-            }
-
-            // Set Selected Days
-            if (scheduleData.days && Array.isArray(scheduleData.days)) {
-                const formattedDays = scheduleData.days.map(day => ({
-                    day: day,
-                    status: true,
-                }));
-                setArraySelectedDays(formattedDays);
-            }
+        if (!scheduleData) {
+            return;
         }
+        const today = moment().format('YYYY-MM-DD');
+        const prefill = (time, setDate, setString) => {
+            const parsed = moment(`${today} ${time}`, [
+                'YYYY-MM-DD HH:mm:ss',
+                'YYYY-MM-DD HH:mm',
+            ]);
+            if (parsed.isValid()) {
+                setDate(parsed.toDate());
+                setString(parsed.format('hh:mm A'));
+            }
+        };
+        if (scheduleData.startTime) {
+            prefill(scheduleData.startTime, setFromTime, setFromTimeString);
+        }
+        if (scheduleData.endTime) {
+            prefill(scheduleData.endTime, setToTime, setToTimeString);
+        }
+        const days = Array.isArray(scheduleData.days)
+            ? scheduleData.days
+            : scheduleData.days === 'Everyday'
+            ? DAY_NAMES
+            : [];
+        setArraySelectedDays(days.map(day => ({day, status: true})));
     }, [scheduleData]);
 
-    // Function
     const onPressGoBack = () => {
         navigation.goBack();
     };
@@ -143,18 +130,7 @@ export default function EditScheduleTimeScreen() {
     // };
 
     const onPressSingleDay = day => {
-        const updatedArray = [...arraySelectedDays];
-        const index = updatedArray.findIndex(item => item.day === day);
-
-        if (index !== -1) {
-            // Toggle status
-            updatedArray[index].status = !updatedArray[index].status;
-        } else {
-            // Add new day
-            updatedArray.push({day, status: true});
-        }
-
-        setArraySelectedDays(updatedArray);
+        setArraySelectedDays(prev => toggleDay(prev, day));
     };
 
     const openFromTimeModal = () => {
@@ -165,60 +141,54 @@ export default function EditScheduleTimeScreen() {
         setIsToTimeModalVisible(true);
     };
 
+    // Start and end are local wall-clock times. End earlier than start is an
+    // overnight schedule (e.g. 22:00 -> 07:00 ends the next morning); only
+    // identical times are rejected.
+    const minutesOfDay = date => date.getHours() * 60 + date.getMinutes();
+
+    const alertSameTime = reopen => {
+        showAlertWithOneCallBack(
+            localize('SF13'),
+            "Start and end time can't be the same.",
+            localize('SF15'),
+            reopen,
+        );
+    };
+
     const onChangeFromTime = selectedFromTime => {
         setIsFromTimeModalVisible(false);
-        if (fromTimeString === '' && toTimeString === '') {
-            const Time = moment(selectedFromTime).format('hh:mm A');
-            setFromTime(selectedFromTime);
-            setFromTimeString(Time);
-        } else if (toTimeString === '') {
-            const Time = moment(selectedFromTime).format('hh:mm A');
-            setFromTime(selectedFromTime);
-            setFromTimeString(Time);
-        } else if (selectedFromTime < toTime) {
-            const Time = moment(selectedFromTime).format('hh:mm A');
-            setFromTime(selectedFromTime);
-            setFromTimeString(Time);
-        } else {
-            showAlertWithOneCallBack(
-                localize('SF13'),
-                localize('SF14'),
-                localize('SF15'),
-                () => {
-                    setIsFromTimeModalVisible(true);
-                },
-            );
+        if (
+            toTimeString !== '' &&
+            minutesOfDay(selectedFromTime) === minutesOfDay(toTime)
+        ) {
+            alertSameTime(() => setIsFromTimeModalVisible(true));
+            return;
         }
+        setFromTime(selectedFromTime);
+        setFromTimeString(moment(selectedFromTime).format('hh:mm A'));
     };
 
     const onChangeToTime = selectedToTime => {
         setIsToTimeModalVisible(false);
-        if (fromTimeString === '' && !toTimeString) {
-            const Time = moment(selectedToTime).format('hh:mm A');
-            setToTime(selectedToTime);
-            setToTimeString(Time);
-        } else if (selectedToTime > fromTime) {
-            const Time = moment(selectedToTime).format('hh:mm A');
-            setToTime(selectedToTime);
-            setToTimeString(Time);
-        } else {
-            showAlertWithOneCallBack(
-                localize('SF13'),
-                localize('SF26'),
-                localize('SF15'),
-                () => {
-                    setIsToTimeModalVisible(true);
-                },
-            );
+        if (
+            fromTimeString !== '' &&
+            minutesOfDay(selectedToTime) === minutesOfDay(fromTime)
+        ) {
+            alertSameTime(() => setIsToTimeModalVisible(true));
+            return;
         }
+        setToTime(selectedToTime);
+        setToTimeString(moment(selectedToTime).format('hh:mm A'));
     };
 
-    // Render Component
     const fromToTimeStyles = props =>
         StyleSheet.create({
             fromInput: {
                 textAlign: 'center',
-                color: props.fromTimeString ? Colors.white : Colors.black,
+                color:
+                    props.fromTimeString || props.toTimeString
+                        ? palette.timeValueText
+                        : palette.placeholder,
             },
             formStyle: {
                 marginTop: Responsive.heightPercentageToDP('1%'),
@@ -231,20 +201,16 @@ export default function EditScheduleTimeScreen() {
             .map(item => item.day)
             .join(', ');
 
-        const payload = {
-            userId: Constants.commonConstant.appUserId
-                ? Constants.commonConstant.appUserId
-                : '',
-            from_time: fromTimeString
+        const payload = buildSchedulePayload({
+            userId: Constants.commonConstant.appUserId,
+            fromTime: fromTimeString
                 ? convertTo24HourFormat(fromTimeString)
                 : '',
-            to_time: toTimeString ? convertTo24HourFormat(toTimeString) : '',
-            days: selectedDays ? selectedDays : '',
-        };
-        console.log('newSchedule_Data_payload', payload);
+            toTime: toTimeString ? convertTo24HourFormat(toTimeString) : '',
+            days: selectedDays,
+        });
 
         setIsLoading(true);
-        console.log('newSchedule_Data_payload', payload);
         EditScheduleApiCall(payload);
     };
 
@@ -258,49 +224,21 @@ export default function EditScheduleTimeScreen() {
             `${scheduleData.id}`,
         );
 
-        console.log('url', url);
-
         await APICall('put', payload, url).then(response => {
             setIsLoading(false);
-            console.log('responseData', response);
             if (
                 response?.statusCode === Constants.apiStatusCode.success &&
                 response?.data
             ) {
                 const responseData = response?.data;
-                console.log('responseData', responseData);
 
                 if (responseData?.status === '1') {
                     navigation.goBack();
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidData
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.message);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
@@ -320,7 +258,7 @@ export default function EditScheduleTimeScreen() {
                     <TouchableOpacity
                         onPress={onPressGoBack}
                         style={styles.backButton}>
-                        <BackIcon width={26} height={26} color={Colors.black} />
+                        <BackIcon width={26} height={26} color={palette.icon} />
                     </TouchableOpacity>
 
                     <ScrollView
@@ -355,6 +293,12 @@ export default function EditScheduleTimeScreen() {
                                                 onPress={() =>
                                                     onPressSingleDay(day)
                                                 }
+                                                accessibilityRole="button"
+                                                accessibilityState={{
+                                                    selected: arraySelectedDays.some(
+                                                        item => item.status && item.day === day,
+                                                    ),
+                                                }}
                                                 style={[
                                                     styles.singleDayTouchableOpacity,
                                                     {
@@ -365,8 +309,8 @@ export default function EditScheduleTimeScreen() {
                                                                     item.day ===
                                                                         day,
                                                             )
-                                                                ? Colors.themeColor
-                                                                : '#5555551F',
+                                                                ? palette.scheduleSelected
+                                                                : palette.pill,
                                                     },
                                                 ]}>
                                                 <Text
@@ -379,8 +323,8 @@ export default function EditScheduleTimeScreen() {
                                                                     item.day ===
                                                                         day,
                                                             )
-                                                                ? Colors.white
-                                                                : Colors.black,
+                                                                ? palette.scheduleSelectedText
+                                                                : palette.pillText,
                                                         },
                                                     ]}>
                                                     {day.substring(0, 3)}
@@ -396,7 +340,7 @@ export default function EditScheduleTimeScreen() {
                                         source={Images.iconClock}
                                         style={styles.clockIcon}
                                     />
-                                    <Text style={styles.fromAndToText}>
+                                    <Text style={[styles.fromAndToText, palette.label && {color: palette.label}]}>
                                         {localize('SF7')}
                                     </Text>
                                 </View>
@@ -417,8 +361,8 @@ export default function EditScheduleTimeScreen() {
                                             '4',
                                         ),
                                         backgroundColor: fromTimeString
-                                            ? Colors.themeColor
-                                            : '#5555551F',
+                                            ? palette.scheduleSelected
+                                            : palette.pill,
                                     }}
                                     textStyle={
                                         fromToTimeStyles({fromTimeString})
@@ -426,14 +370,14 @@ export default function EditScheduleTimeScreen() {
                                     }
                                 />
                             </View>
-                            <View style={styles.lineView} />
+                            <View style={[styles.lineView, {backgroundColor: palette.divider}]} />
                             <View style={styles.toTimeView}>
                                 <View style={styles.fromAndToView}>
                                     <Image
                                         source={Images.iconClock}
                                         style={styles.clockIcon}
                                     />
-                                    <Text style={styles.fromAndToText}>
+                                    <Text style={[styles.fromAndToText, palette.label && {color: palette.label}]}>
                                         {localize('SF8')}
                                     </Text>
                                 </View>
@@ -454,8 +398,8 @@ export default function EditScheduleTimeScreen() {
                                             '4',
                                         ),
                                         backgroundColor: toTimeString
-                                            ? Colors.themeColor
-                                            : '#5555551F',
+                                            ? palette.scheduleSelected
+                                            : palette.pill,
                                     }}
                                     textStyle={
                                         fromToTimeStyles({toTimeString})
@@ -467,6 +411,7 @@ export default function EditScheduleTimeScreen() {
                     </ScrollView>
                     <CustomButton
                         title={localize('SF16')}
+                        color={palette.confirmBg}
                         onPress={handleConfirmPress}
                         disabled={
                             fromTimeString === '' ||

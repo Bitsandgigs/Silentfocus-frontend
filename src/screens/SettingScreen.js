@@ -13,32 +13,65 @@ import {
     Platform,
     Image,
     Switch,
+    Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
-import {useNavigation} from '@react-navigation/native';
+import {useIsFocused, useNavigation} from '@react-navigation/native';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
+import {
+    describeControlModes,
+    isPersistedCustomConfirmation,
+    markDeviceCustomConfirmed,
+    readDeviceCustomConfirmed,
+    syncAutomationSettings,
+} from '../utils/automationSync';
+import {ensureLocationAutomationPermissions} from '../utils/locationPermissions';
 import {Constants, Images} from '../utils/theme';
-import {showAlert} from '../function/Alert';
+import {showAlert, showApiErrorAlert} from '../function/Alert';
 import screens from '../utils/theme/screens';
+import {pushAutoReply} from '../utils/autoResponseSync';
+import {clearLearnedNow} from '../utils/privacyActions';
+import {fetchZonesForSync} from '../utils/automationSync';
+import {ACTION_BUTTON_BG, linkColor} from '../utils/theme/controlColors';
+import {
+    DEFAULT_LEARNING_STATE,
+    getLearningState,
+    setLearningEnabled,
+} from '../utils/learning';
+import {
+    DEFAULT_COMMS_STATE,
+    DEFAULT_REPLY,
+    MAX_TEMPLATE_LENGTH,
+    getCommsState,
+    setAutoReplySettings,
+} from '../utils/comms';
 
 const SettingsScreen = () => {
     const navigation = useNavigation();
     const [locationMode, setLocationMode] = useState(false);
     const [calendarMode, setCalendarMode] = useState(false);
     const [customMode, setCustomMode] = useState(false);
+    // #4: confirmation state only for the explanatory texts (rule unchanged).
+    const [customModeConfirmed, setCustomModeConfirmed] = useState(null);
+    const [deviceConfirmed, setDeviceConfirmed] = useState(false);
+    const modeInfo = describeControlModes({locationMode, customMode, customModeConfirmed}, deviceConfirmed);
     const [modalVisible, setModalVisible] = useState(false);
     const [tempResponse, setTempResponse] = useState('');
-    const [autoResponse, setAutoResponse] = useState('');
+    const [comms, setComms] = useState(DEFAULT_COMMS_STATE);
+    const [learning, setLearning] = useState(DEFAULT_LEARNING_STATE);
     const [isLoading, setIsLoading] = useState(false);
 
+    const isFocused = useIsFocused();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
+    // Orange link text: AA in light mode too (#D6721E was 3.3:1 on white).
+    const link = linkColor(isDark);
     const background = isDark ? '#111' : '#fff';
     const bg = isDark ? '#111111' : '#FFFFFF';
     const card = isDark ? 'rgba(85, 85, 85, 0.12)' : '#2E3A3E14';
@@ -56,58 +89,109 @@ const SettingsScreen = () => {
         GetControlModesApiCall(payload);
     }, []);
 
-    const handleSetControlModes = async updatedValues => {
+    // Auto reply / emergency settings live natively (work offline and with
+    // the app closed); refreshed whenever this tab is shown.
+    useEffect(() => {
+        if (isFocused) {
+            getCommsState()
+                .then(setComms)
+                .catch(() => {});
+            getLearningState()
+                .then(setLearning)
+                .catch(() => {});
+        }
+    }, [isFocused]);
+
+    // Smart Location Learning: off stops new samples; existing places can
+    // be cleared right away or kept.
+    const onToggleLearning = async on => {
+        try {
+            const next = await setLearningEnabled(on);
+            setLearning(next);
+            if (!on && next.placeCount > 0) {
+                Alert.alert(
+                    'Smart Location Learning is off',
+                    'No new places will be learned. Clear the places already learned on this phone?',
+                    [
+                        {text: 'Keep', style: 'cancel'},
+                        {text: 'Clear', style: 'destructive', onPress: onClearLearned},
+                    ],
+                );
+            }
+        } catch (e) {
+            showAlert(Constants.commonConstant.appName, 'The setting could not be changed.');
+        }
+    };
+
+    // "Clear learned locations" lives in the Accounts tab (Client Issue #7);
+    // here it is only offered when learning is turned off.
+    const onClearLearned = async () => {
+        const next = await clearLearnedNow();
+        if (next) {
+            setLearning(next);
+        }
+    };
+
+    const saveAutoReply = async patch => {
+        setComms(prev => ({...prev, autoReply: {...prev.autoReply, ...patch}}));
+        try {
+            setComms(await setAutoReplySettings(patch));
+            pushAutoReply({fetchZones: fetchZonesForSync}).catch(() => {});
+        } catch (e) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'Auto reply settings could not be saved.',
+            );
+        }
+    };
+
+    // `previous`: the modes before this optimistic toggle, restored when
+    // the server didn't accept the change (offline, 4xx/5xx).
+    // `customModeConfirmed`: only the Custom toggle itself sends it - the
+    // user's explicit choice that switches this account to independent
+    // Custom Mode (see zonesEnabledFor in automationSync.js).
+    const handleSetControlModes = async (updatedValues, previous, customModeConfirmed = false) => {
         const payload = {
             userId: Constants.commonConstant.appUserId || '',
             locationMode: updatedValues.locationMode,
             calendarMode: updatedValues.calendarMode,
             customMode: updatedValues.customMode,
+            ...(customModeConfirmed ? {customModeConfirmed: 1} : {}),
         };
 
         setIsLoading(true);
 
-        await SetControlModesApiCall(payload);
+        await SetControlModesApiCall(payload, previous);
     };
 
-    const SetControlModesApiCall = async payload => {
-        console.log('payload_set_control', payload);
+    const SetControlModesApiCall = async (payload, previous) => {
         const url = EndPoints.setControlModes;
 
-        await APICall('post', payload, url).then(response => {
-            setIsLoading(false);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-
-                if (responseData?.status === '1') {
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+        const response = await APICall('post', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            response?.data?.status === '1'
+        ) {
+            if (payload.customModeConfirmed && isPersistedCustomConfirmation(response)) {
+                await markDeviceCustomConfirmed(Constants.commonConstant.appUserId);
+                setCustomModeConfirmed(true);
+                setDeviceConfirmed(true);
             }
-        });
+            // Custom/Calendar Mode gate the native automation.
+            syncAutomationSettings().catch(() => {});
+            return;
+        }
+        if (previous) {
+            setLocationMode(previous.locationMode);
+            setCalendarMode(previous.calendarMode);
+            setCustomMode(previous.customMode);
+        }
+        showApiErrorAlert(
+            Constants.commonConstant.appName,
+            response,
+            'The setting could not be saved. Please try again.',
+        );
     };
 
     // API
@@ -126,57 +210,48 @@ const SettingsScreen = () => {
                     setLocationMode(responseData.result.locationMode);
                     setCalendarMode(responseData.result.calendarMode);
                     setCustomMode(responseData.result.customMode);
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                    setCustomModeConfirmed(responseData.result.customModeConfirmed ?? null);
+                    readDeviceCustomConfirmed(Constants.commonConstant.appUserId).then(setDeviceConfirmed);
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
 
-    const toggleSwitch = type => {
+    const toggleSwitch = async type => {
         if (type === 'location') {
+            // Reserved for public places (not implemented): no location prompt.
             setLocationMode(prev => !prev);
-            handleSetControlModes({
-                locationMode: !locationMode,
-                calendarMode,
-                customMode,
-            });
+            handleSetControlModes(
+                {locationMode: !locationMode, calendarMode, customMode},
+                {locationMode, calendarMode, customMode},
+            );
         } else if (type === 'calendar') {
             setCalendarMode(prev => !prev);
-            handleSetControlModes({
-                locationMode,
-                calendarMode: !calendarMode,
-                customMode,
-            });
+            handleSetControlModes(
+                {locationMode, calendarMode: !calendarMode, customMode},
+                {locationMode, calendarMode, customMode},
+            );
         } else if (type === 'custom') {
+            if (!customMode) {
+                // Silent Zones need location: ask (with explanation) first.
+                const perms = await ensureLocationAutomationPermissions();
+                if (!perms.automationReady) {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        'Custom Mode is on, but Silent Zones only work once location is allowed "all the time". You can allow it later from Home.',
+                    );
+                }
+            }
             setCustomMode(prev => !prev);
-            handleSetControlModes({
-                locationMode,
-                calendarMode,
-                customMode: !customMode,
-            });
-            navigation.navigate(screens.MapScreen);
+            handleSetControlModes(
+                {locationMode, calendarMode, customMode: !customMode},
+                {locationMode, calendarMode, customMode},
+                true,
+            );
         }
     };
 
@@ -236,9 +311,7 @@ const SettingsScreen = () => {
                                                         : '#555',
                                                 },
                                             ]}>
-                                            {
-                                                'Your phone will be muted automatically when any silent zones detected like libraries, offices, or religious places.'
-                                            }
+                                            {modeInfo.locationText}
                                         </Text>
                                     </View>
                                 </View>
@@ -333,7 +406,12 @@ const SettingsScreen = () => {
                                     source={Images.iconCustom}
                                     style={styles.icon}
                                 />
-                                <View style={styles.timeBlock}>
+                                <TouchableOpacity
+                                    style={styles.timeBlock}
+                                    accessibilityRole="button"
+                                    onPress={() =>
+                                        navigation.navigate(screens.MapScreen)
+                                    }>
                                     <Text
                                         style={[
                                             styles.timeRange,
@@ -343,7 +421,7 @@ const SettingsScreen = () => {
                                                     : '#1C1C1C',
                                             },
                                         ]}>
-                                        {'Custom'}
+                                        {'Custom · My Silent Zones'}
                                     </Text>
 
                                     <View style={styles.labelBlock}>
@@ -356,10 +434,21 @@ const SettingsScreen = () => {
                                                         : '#555',
                                                 },
                                             ]}>
-                                            {'You can add your custom location'}
+                                            {modeInfo.customText}
+                                        </Text>
+                                        <Text
+                                            accessibilityLiveRegion="polite"
+                                            style={[
+                                                styles.everyday,
+                                                {color: isDark ? '#E6E6E6' : '#1C1C1C'},
+                                            ]}>
+                                            {modeInfo.customStatus}
+                                        </Text>
+                                        <Text style={[styles.manageZonesLink, {color: link}]}>
+                                            {'Manage Silent Zones ›'}
                                         </Text>
                                     </View>
-                                </View>
+                                </TouchableOpacity>
                                 <Switch
                                     value={customMode}
                                     style={styles.toggleWrapper}
@@ -374,43 +463,111 @@ const SettingsScreen = () => {
                         </View>
                     </View>
 
-                    {/* Auto Response Section */}
+                    {/* Auto Response Section (persisted natively; see AutoReplyScreen) */}
                     <Text style={[styles.sectionTitle, {color: text}]}>
                         SET AUTO RESPONSE
                     </Text>
                     <View
                         style={[styles.responseCard, {backgroundColor: card}]}>
-                        <Text style={[styles.modeSubTitle, {color: text}]}>
-                            SELECT RESPONSE
-                        </Text>
+                        <View style={styles.responseRow}>
+                            <Text style={[styles.modeSubTitle, {color: text}]}>
+                                AUTO REPLY
+                            </Text>
+                            <Switch
+                                value={comms.autoReply.enabled}
+                                onValueChange={v =>
+                                    saveAutoReply({enabled: v})
+                                }
+                                trackColor={{false: '#444', true: '#F08A2C'}}
+                                thumbColor="#fff"
+                                accessibilityLabel="Auto reply"
+                            />
+                        </View>
                         <View
                             style={[styles.divider, {backgroundColor: divider}]}
                         />
-                        {autoResponse ? (
-                            <View style={styles.responseRow}>
-                                <Text
-                                    style={[
-                                        styles.responsePreview,
-                                        {color: mutedText},
-                                    ]}>
-                                    "{autoResponse}"
-                                </Text>
-                                <TouchableOpacity
-                                    onPress={() => setAutoResponse('')}>
-                                    <Text style={styles.deleteBtn}>✕</Text>
-                                </TouchableOpacity>
-                            </View>
-                        ) : (
+                        <View style={styles.responseRow}>
+                            <Text
+                                style={[
+                                    styles.responsePreview,
+                                    {color: mutedText},
+                                ]}>
+                                "{comms.autoReply.defaultTemplate}"
+                            </Text>
                             <TouchableOpacity
+                                accessibilityRole="button"
+                                accessibilityLabel="Edit default reply"
                                 onPress={() => {
-                                    setTempResponse(autoResponse);
+                                    setTempResponse(
+                                        comms.autoReply.defaultTemplate,
+                                    );
                                     setModalVisible(true);
                                 }}>
-                                <Text style={styles.manualText}>
-                                    Write Manually ＋
-                                </Text>
+                                <Text style={[styles.manualText, {color: link}]}>Edit</Text>
                             </TouchableOpacity>
-                        )}
+                        </View>
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            onPress={() =>
+                                navigation.navigate(screens.AutoReplyScreen)
+                            }>
+                            <Text style={[styles.manageZonesLink, {color: link}]}>
+                                {'Zone replies, frequency & access ›'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Emergency contacts / urgent callers */}
+                    <Text style={[styles.sectionTitle, {color: text}]}>
+                        EMERGENCY & URGENT CALLS
+                    </Text>
+                    <TouchableOpacity
+                        accessibilityRole="button"
+                        style={[styles.responseCard, {backgroundColor: card}]}
+                        onPress={() =>
+                            navigation.navigate(screens.EmergencyContactsScreen)
+                        }>
+                        <Text style={[styles.modeSubTitle, {color: text}]}>
+                            EMERGENCY CONTACTS
+                        </Text>
+                        <Text
+                            style={[
+                                styles.responsePreview,
+                                {color: mutedText},
+                            ]}>
+                            {`${comms.emergencyContacts.length} contact${
+                                comms.emergencyContacts.length === 1 ? '' : 's'
+                            } · Urgent callers ${
+                                comms.callSettings.urgentEnabled ? 'on' : 'off'
+                            }`}
+                        </Text>
+                        <Text style={[styles.manageZonesLink, {color: link}]}>
+                            {'Manage emergency contacts ›'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* Smart Location Learning (suggestions only, on-device) */}
+                    <Text style={[styles.sectionTitle, {color: text}]}>
+                        SMART LOCATION LEARNING
+                    </Text>
+                    <View style={[styles.responseCard, {backgroundColor: card}]}>
+                        <View style={styles.responseRow}>
+                            <Text style={[styles.modeSubTitle, {color: text}]}>
+                                SUGGEST SILENT ZONES
+                            </Text>
+                            <Switch
+                                value={learning.enabled}
+                                onValueChange={onToggleLearning}
+                                trackColor={{false: '#444', true: '#F08A2C'}}
+                                thumbColor="#fff"
+                                accessibilityLabel="Smart Location Learning"
+                            />
+                        </View>
+                        <Text style={[styles.responsePreview, styles.plainText, {color: mutedText}]}>
+                            When you turn Silent Focus on by hand, it notes roughly where you are. After a few
+                            times at the same place on different days, it suggests a Silent Zone - it never
+                            creates one by itself. Learned places stay on this phone and are kept for 30 days.
+                        </Text>
                     </View>
 
                     {/* Modal */}
@@ -447,15 +604,18 @@ const SettingsScreen = () => {
                                     placeholderTextColor={mutedText}
                                     value={tempResponse}
                                     onChangeText={setTempResponse}
+                                    maxLength={MAX_TEMPLATE_LENGTH}
                                     multiline
                                 />
                                 <View style={styles.modalButtons}>
                                     <TouchableOpacity
                                         style={styles.saveBtn}
                                         onPress={() => {
-                                            setAutoResponse(
-                                                tempResponse.trim(),
-                                            );
+                                            saveAutoReply({
+                                                defaultTemplate:
+                                                    tempResponse.trim() ||
+                                                    DEFAULT_REPLY,
+                                            });
                                             setModalVisible(false);
                                         }}>
                                         <Text
@@ -471,7 +631,7 @@ const SettingsScreen = () => {
                                         onPress={() => setModalVisible(false)}>
                                         <Text
                                             style={{
-                                                color: '#D6721E',
+                                                color: link,
                                                 fontWeight: '600',
                                             }}>
                                             Cancel
@@ -483,7 +643,7 @@ const SettingsScreen = () => {
                     </Modal>
                 </ScrollView>
             </KeyboardAvoidingView>
-            <CustomLoader isLoading={false} />
+            <CustomLoader isLoading={isLoading} />
         </SafeAreaView>
     );
 };
@@ -565,6 +725,11 @@ const styles = StyleSheet.create({
         color: '#D6721E',
         marginTop: hp('0.5%'),
     },
+    plainText: {
+        fontStyle: 'normal',
+        marginTop: 8,
+        lineHeight: 18,
+    },
     responsePreview: {
         fontSize: wp('3.2%'),
         fontStyle: 'italic',
@@ -612,7 +777,7 @@ const styles = StyleSheet.create({
         marginTop: hp('3%'),
     },
     saveBtn: {
-        backgroundColor: '#D6721E',
+        backgroundColor: ACTION_BUTTON_BG, // white text 6.0:1 (#D6721E was 3.3:1)
         paddingVertical: hp('1%'),
         paddingHorizontal: wp('5%'),
         borderRadius: wp('2%'),
@@ -660,6 +825,11 @@ const styles = StyleSheet.create({
     toggleWrapper: {
         marginLeft: wp('1%'),
         // tintColor: '#B87333',
+    },
+    manageZonesLink: {
+        color: '#D6721E',
+        marginTop: 6,
+        fontWeight: '600',
     },
 });
 

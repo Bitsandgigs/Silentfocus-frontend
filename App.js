@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {Platform, StatusBar} from 'react-native';
+import {Platform, StatusBar, useColorScheme} from 'react-native';
 import {Colors} from './src/utils/theme';
 // Context Provider
 import ContextProvider from './src/utils/context/contextProvider';
@@ -8,12 +8,16 @@ import {NavigationContainer} from '@react-navigation/native';
 import RootStack from './src/navigation/RootStack/RootStack';
 import {ThemeProvider} from './src/context/ThemeContext';
 import KeyboardManager from 'react-native-keyboard-manager';
+import OfflineBanner from './src/componentes/OfflineBanner';
+import ErrorBoundary from './src/componentes/ErrorBoundary';
 
 export default function App() {
+    // Status-bar icons follow the theme (dark icons were invisible in dark mode).
+    const isDark = useColorScheme() === 'dark';
     useEffect(() => {
         if (Platform.OS === 'ios') {
             KeyboardManager.setEnable(true);
-            KeyboardManager.setEnableDebugging(true);
+            KeyboardManager.setEnableDebugging(__DEV__);
             KeyboardManager.setKeyboardDistanceFromTextField(15);
             KeyboardManager.setLayoutIfNeededOnUpdate(true);
             KeyboardManager.setEnableAutoToolbar(true);
@@ -41,13 +45,16 @@ export default function App() {
         <>
             <ThemeProvider>
                 <StatusBar
-                    backgroundColor={Colors.white}
-                    barStyle={'dark-content'}
+                    backgroundColor={isDark ? '#111111' : Colors.white}
+                    barStyle={isDark ? 'light-content' : 'dark-content'}
                 />
                 <ContextProvider>
-                    <NavigationContainer>
-                        <RootStack />
-                    </NavigationContainer>
+                    <ErrorBoundary>
+                        <NavigationContainer>
+                            <RootStack />
+                        </NavigationContainer>
+                    </ErrorBoundary>
+                    <OfflineBanner />
                 </ContextProvider>
             </ThemeProvider>
         </>

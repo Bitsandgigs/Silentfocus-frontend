@@ -7,6 +7,7 @@ import ChatScreen from './screens/ActivityScreen';
 import SettingsScreen from './screens/SettingScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import CustomTabBar from './componentes/CustomTabar';
+import ActivityIcon from './assets/svgs/ActivityIcon';
 
 const Tab = createBottomTabNavigator();
 

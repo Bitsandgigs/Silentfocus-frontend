@@ -18,6 +18,9 @@ export default {
     ScheduleTimeScreen: 'ScheduleTimeScreen',
     EditScheduleTimeScreen: 'EditScheduleTimeScreen',
     MapScreen: 'MapScreen',
+    EmergencyContactsScreen: 'EmergencyContactsScreen',
+    AutoReplyScreen: 'AutoReplyScreen',
+    SessionHistoryScreen: 'SessionHistoryScreen',
 
     // Profile Flow
     ProfileScreen: 'ProfileScreen',

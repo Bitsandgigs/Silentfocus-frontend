@@ -9,9 +9,9 @@ import {
     FlatList,
     Switch,
     Image,
-    NativeModules,
     Platform,
     Alert,
+    Linking,
 } from 'react-native';
 
 // Lib
@@ -20,9 +20,8 @@ import {
     heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import {useIsFocused, useNavigation} from '@react-navigation/native';
-import ReactNativeCalendarEvents from 'react-native-calendar-events';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BackgroundService from 'react-native-background-actions';
+import {syncAllAutomationSources} from '../utils/automationSync';
 import moment from 'moment';
 
 // Component
@@ -36,21 +35,48 @@ import screens from '../utils/theme/screens';
 import {height, localize, width} from '../function/commonFunctions';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {showAlert} from '../function/Alert';
+import {showAlert, showApiErrorAlert} from '../function/Alert';
+import LearningSuggestionCard from '../componentes/LearningSuggestionCard';
+import {normalizeScheduleRow} from '../utils/scheduleRules';
+import {
+    isEngineAvailable,
+    openDndAccessSettings,
+    openExactAlarmSettings,
+    pushSchedulesToEngine,
+    setManualSilent,
+    syncDeviceCalendar,
+} from '../utils/silentFocusEngine';
+import {
+    ensureLocationAutomationPermissions,
+    requestCalendarPermission,
+} from '../utils/locationPermissions';
+import useSilentFocusState from '../utils/useSilentFocusState';
+import {
+    describeEngineState,
+    formatCountdown,
+    silenceEndsAt,
+} from '../utils/engineStatus';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
+import {linkColor} from '../utils/theme/controlColors';
 
-const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
 export default function HomeScreen() {
     const navigation = useNavigation();
-    const [silentMode, setSilentMode] = useState(false);
-    const [timer, setTimer] = useState(0);
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
+    // Orange link text: AA on the light cards too (#D6721E was ~3:1).
+    const link = linkColor(isDark);
     const [isLoading, setIsLoading] = useState(false);
     const [arrayEvents, setArrayEvents] = useState([]);
     const isFocused = useIsFocused();
-    const [activeScheduleId, setActiveScheduleId] = useState(null);
+    const {engineState, setEngineState} = useSilentFocusState();
+    // Counts manual Silent ON taps (Smart Location Learning's only signal).
+    const [manualOnCount, setManualOnCount] = useState(0);
+    const [scheduleLoadError, setScheduleLoadError] = useState(false);
+    const silentActive = !!engineState?.silentActive;
+    const activeScheduleIds = (engineState?.activeRules || [])
+        .filter(rule => rule.source === 'SCHEDULE')
+        .map(rule => String(rule.ruleId));
 
     // const [arrayEvents, setArrayEvents] = useState([
     //     {
@@ -68,9 +94,6 @@ export default function HomeScreen() {
     //         enabled: false,
     //     },
     // ]);
-    const {SilentFocus} = NativeModules;
-    const [timeLeft, setTimeLeft] = useState('00:00:00');
-    const [running, setRunning] = useState(false);
 
     const dummyNotifications = [
         {
@@ -99,371 +122,117 @@ export default function HomeScreen() {
         },
     ];
 
-    // useEffect
+    // Countdown display only (1s re-render while silent by schedule); the
+    // automation itself runs natively on alarms.
+    const [now, setNow] = useState(Date.now());
+    const silenceEnd = silenceEndsAt(engineState);
+    const status = describeEngineState(engineState, now);
     useEffect(() => {
-        let interval;
-        if (silentMode && timer > 0) {
-            interval = setInterval(() => setTimer(prev => prev - 1), 1000);
+        if (!silenceEnd) {
+            return undefined;
         }
+        const interval = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(interval);
-    }, [silentMode, timer]);
+    }, [silenceEnd]);
 
-    // useEffect(() => {
-    //     getCalendarEvents();
-    // }, []);
-
-    useEffect(() => {
-        const checkAndFetchCalendarEvents = async () => {
-            try {
-                const storedValue = await AsyncStorage.getItem(
-                    CALENDAR_SYNC_KEY,
-                );
-                const isCalendarSynced = JSON.parse(storedValue); // convert to boolean
-
-                console.log('isCalendarSynced====', isCalendarSynced);
-
-                if (isCalendarSynced) {
-                    // ✅ Only call getCalendarEvents if isCalendarSynced === true
-                    getCalendarEvents();
-                } else {
-                    console.log(
-                        'Calendar not synced, skipping getCalendarEvents',
-                    );
-                }
-            } catch (error) {
-                console.error('Error reading calendar sync status:', error);
-            }
-        };
-
-        checkAndFetchCalendarEvents();
-    }, []);
-
+    // Home is where the app lands: refresh everything the native engine
+    // automates from (settings, zones, device calendar). The engine keeps
+    // its last copy if a request fails, so this never blocks automation.
     useEffect(() => {
         if (isFocused) {
             setIsLoading(true);
             getScheduleApiCall();
+            syncAllAutomationSources()
+                .then(state => state && setEngineState(state))
+                .catch(() => {});
         }
     }, [isFocused]);
 
-    useEffect(() => {
-        if (arrayEvents.length > 0) {
-            restoreTimerState();
-        }
-    }, [arrayEvents]);
-
-    const restoreTimerState = async () => {
-        try {
-            console.log('restoreTimerState started');
-
-            const savedTimer = await AsyncStorage.getItem('timer_state');
-            console.log('restoreTimerState -> savedTimer value:', savedTimer);
-
-            if (!savedTimer) {
-                console.log('No saved timer found');
-                setSilentMode(false);
-                setRunning(false);
-                setTimer(0);
-                return;
-            }
-
-            const {start, end, scheduleId, isEnabled} = JSON.parse(savedTimer);
-            const now = moment().unix();
-
-            console.log(
-                'Now:',
-                now,
-                'Start:',
-                start,
-                'End:',
-                end,
-                'ScheduleId:',
-                scheduleId,
-                'isEnabled:',
-                isEnabled,
-            );
-
-            // ❌ If saved state shows schedule was disabled, don't run the timer
-            if (!isEnabled) {
-                console.log('Timer not restored because switch is OFF.');
-                await AsyncStorage.removeItem('timer_state'); // clear old state
-                setSilentMode(false);
-                setRunning(false);
-                setTimer(0);
-                return;
-            }
-
-            // ✅ Check schedule exists and is still enabled
-            const selectedSchedule = arrayEvents.find(
-                item => String(item.id) === String(scheduleId),
-            );
-
-            if (!selectedSchedule || !selectedSchedule.enabled) {
-                console.log('No enabled schedule found for this timer.');
-                setSilentMode(false);
-                setRunning(false);
-                setTimer(0);
-                await AsyncStorage.removeItem('timer_state');
-                return;
-            }
-
-            // ✅ Resume timer only if switch is ON and current time is between start & end
-            if (now >= start && now < end) {
-                const remaining = end - now;
-                console.log('Resuming timer, remaining seconds:', remaining);
-
-                setSilentMode(true);
-                setRunning(true);
-                setTimer(remaining);
-                setActiveScheduleId(scheduleId);
-                BackgroundService.start(backgroundTask, {
-                    taskName: 'SilentTimer',
-                    taskTitle: 'Silent Timer Running',
-                    taskDesc: 'Tracking scheduled silent mode timer',
-                    taskIcon: {name: 'ic_launcher', type: 'mipmap'},
-                    parameters: {delay: 1000, schedule: selectedSchedule},
-                    foregroundServiceType: 'dataSync',
-                });
-            } else {
-                console.log(
-                    'Timer already expired or not started yet, clearing saved data',
-                );
-                await AsyncStorage.removeItem('timer_state');
-                setSilentMode(false);
-                setRunning(false);
-                setTimer(0);
-            }
-        } catch (error) {
-            console.error('Failed to restore timer state:', error);
-        }
-    };
-
-    const getCalendarEvents = async () => {
-        console.log('calendar_event', 'calendar_event------');
-        const startDate = new Date().toISOString();
-        const endDate = new Date(
-            new Date().setDate(new Date().getDate() + 7),
-        ).toISOString();
-
-        const arrayFetchCalendarEvents =
-            await ReactNativeCalendarEvents.fetchAllEvents(startDate, endDate);
-
-        console.log(
-            'arrayFetchCalendarEvents_________',
-            arrayFetchCalendarEvents.length,
-        );
-
-        if (arrayFetchCalendarEvents && arrayFetchCalendarEvents.length > 0) {
-            const arrayFormattedEvents = arrayFetchCalendarEvents.map(item => {
-                const UserId = Constants.commonConstant.appUserId;
-                const FormTime = item.startDate
-                    ? moment(item.startDate).format('HH:mm')
-                    : '';
-                const ToTime = item.endDate
-                    ? moment(item.endDate).format('HH:mm')
-                    : '';
-                const Days = item.allDay
-                    ? 'All Day'
-                    : moment(item.startDate).format('dddd');
-
-                return {
-                    userId: UserId,
-                    from_time: FormTime,
-                    to_time: ToTime,
-                    days: Days,
-                };
-            });
-
-            console.log('arrayFormattedEvents', arrayFormattedEvents);
-
-            AsyncStorage.getItem('isCalendarSynced').then(value =>
-                console.log('isCalendarSynced====', value),
-            );
-            setIsLoading(true);
-            saveCalendarEventsToApi(arrayFormattedEvents);
-        }
-    };
-
-    const saveCalendarEventsToApi = async payload => {
-        const url = EndPoints.scheduleTimerCalendarEventData;
-        const header = {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-        };
-
-        await APICall('post', payload, url, header).then(response => {
-            setIsLoading(false);
-            console.log('Calendar Event API Response:', response);
-
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                if (response.data.status === '1') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        'Calendar Events Saved Successfully',
-                    );
-                    // navigation.goBack();
-                }
-
-                // else {
-                //     showAlert(
-                //         Constants.commonConstant.appName,
-                //         response.data.message,
-                //     );
-                // }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidData
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    response?.data?.message,
-                );
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    response?.data?.detail,
-                );
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    response?.data?.detail[0]?.msg,
-                );
-            } else {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
-    };
 
     const convertTo24HourFormat = time => {
         return moment(time, ['HH:mm ']).format('h:mm A');
     };
 
-    // Function
-    const toggleSilentMode = () => {
-        setSilentMode(prevSilentMode => {
-            if (!prevSilentMode) {
-                setTimer(900); // Reset to 15 minutes
-            } else {
-                setTimer(0); // Stop timer when turning off
-            }
-            return !prevSilentMode;
-        });
+    // Manual toggle: the native engine decides and applies; the UI only
+    // renders what it reports back.
+    const promptDndAccess = () => {
+        Alert.alert(
+            'Permission required',
+            'Silent Focus needs “Do Not Disturb” access to silence this phone.',
+            [
+                {text: 'Cancel', style: 'cancel'},
+                {text: 'Open Settings', onPress: openDndAccessSettings},
+            ],
+        );
     };
 
-    const ensureAccess = async () => {
-        if (Platform.OS !== 'android') return false;
-
-        const ok = await SilentFocus.hasDndAccess();
-        if (!ok) {
-            Alert.alert(
-                'Permission required',
-                'To change ringer mode, grant “Do Not Disturb” access to this app.',
-                [
-                    {text: 'Cancel', style: 'cancel'},
-                    {
-                        text: 'Open Settings',
-                        onPress: () => SilentFocus.openDndAccessSettings(),
-                    },
-                ],
+    // Permission fixes started from the Home banners (never automatically).
+    const onPressLocationIssue = async () => {
+        if (status.locationIssue?.status === 'LOCATION_OFF') {
+            Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(
+                () => {},
             );
-            return false;
+            return;
         }
-        return true;
-    };
-    // const ensureAccess = async () => {
-    //     if (Platform.OS !== 'android') {
-    //         // Alert.alert('Not supported', 'This feature works only on Android.');
-    //         return false;
-    //     }
-    //     const ok = await SilentFocus.hasDndAccess();
-    //     if (!ok) {
-    //         Alert.alert(
-    //             'Permission required',
-    //             'To change ringer mode, grant “Do Not Disturb” access to this app.',
-    //             [
-    //                 {text: 'Cancel', style: 'cancel'},
-    //                 {
-    //                     text: 'Open Settings',
-    //                     onPress: () => SilentFocus.openDndAccessSettings(),
-    //                 },
-    //             ],
-    //         );
-    //         return false;
-    //     }
-    //     return true;
-    // };
-
-    useEffect(() => {
-        let interval;
-        if (silentMode && timer > 0) {
-            interval = setInterval(() => {
-                setTimer(prev => {
-                    if (prev <= 1) {
-                        clearInterval(interval);
-                        handleTimerComplete();
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [silentMode, timer]);
-
-    const handleTimerComplete = async () => {
-        await setPhoneNormal();
-        setSilentMode(false);
-        setRunning(false);
-
-        await AsyncStorage.removeItem('timer_state');
-
-        await BackgroundService.stop();
+        await ensureLocationAutomationPermissions();
+        syncAllAutomationSources()
+            .then(state => state && setEngineState(state))
+            .catch(() => {});
     };
 
-    // const setPhoneSilent = async () => {
-    //     if (await ensureAccess()) {
-    //         await SilentFocus.setSilent();
-    //     }
-    // };
+    const onPressCalendarIssue = async () => {
+        await requestCalendarPermission();
+        syncDeviceCalendar()
+            .then(state => state && setEngineState(state))
+            .catch(() => {});
+    };
 
-    const setPhoneSilent = async () => {
-        if (await ensureAccess()) {
-            try {
-                await SilentFocus.setSilent(); // will now work even if in vibrate mode
-            } catch (error) {
-                console.error('Failed to set silent mode', error);
+    const onPressSilentButton = async () => {
+        if (!isEngineAvailable) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'Silent Focus automation is only available on Android.',
+            );
+            return;
+        }
+        if (engineState && !engineState.dndAccess) {
+            promptDndAccess();
+            return;
+        }
+        try {
+            const turningOn = !engineState?.silentActive;
+            const next = await setManualSilent(turningOn);
+            setEngineState(next);
+            if (turningOn && next?.silentActive) {
+                setManualOnCount(c => c + 1);
             }
-        }
-    };
-    const setPhoneNormal = async () => {
-        if (await ensureAccess()) {
-            try {
-                await SilentFocus.setNormal(); // will force back to ring mode
-            } catch (error) {
-                console.error('Failed to set normal mode', error);
+            if (next?.blockedReason === 'DND_ACCESS_MISSING') {
+                promptDndAccess();
+            } else if (next?.blockedReason) {
+                showAlert(
+                    Constants.commonConstant.appName,
+                    'Silent Focus could not change the phone mode.',
+                );
             }
+        } catch (e) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'Silent Focus could not change the phone mode.',
+            );
         }
     };
 
+    // Saves the enabled flag, then refreshes the native alarms. Enabling a
+    // schedule never silences the phone by itself: the engine does that at
+    // the schedule's start time (or now, if it is already inside it).
     const toggleSwitch = async id => {
+        const previous = arrayEvents;
         const updatedData = arrayEvents.map(item =>
             item.id === id ? {...item, enabled: !item.enabled} : item,
         );
-
         setArrayEvents(updatedData);
 
         const selectedSchedule = updatedData.find(item => item.id === id);
-
         const payload = {
             schedule_id: selectedSchedule.id ? selectedSchedule.id : '',
             isTimerEnabled: selectedSchedule.enabled
@@ -472,125 +241,14 @@ export default function HomeScreen() {
         };
 
         setIsLoading(true);
-        postTimerScheduleApiCall(payload);
-
-        if (selectedSchedule?.enabled) {
-            setPhoneSilent();
-            setSilentMode(true);
-            setTimer(0);
-            setRunning(true);
-
-            const startTimestamp = convertTimeToTimestamp(
-                selectedSchedule.startTime,
-            );
-            const endTimestamp = convertTimeToTimestamp(
-                selectedSchedule.endTime,
-            );
-
-            // ✅ Save timer state in AsyncStorage
-            const timerData = {
-                scheduleId: selectedSchedule.id,
-                start: startTimestamp,
-                end: endTimestamp,
-                isEnabled: selectedSchedule.enabled,
-            };
-
-            console.log('Saving timer state:', timerData);
-
-            await AsyncStorage.setItem(
-                'timer_state',
-                JSON.stringify(timerData),
-            );
-
-            const check = await AsyncStorage.getItem('timer_state');
-            console.log('Data after saving:', check);
-
-            setActiveScheduleId(selectedSchedule.id);
-
-            BackgroundService.start(backgroundTask, {
-                taskName: 'SilentTimer',
-                taskTitle: 'Silent Timer Running',
-                taskDesc: 'Tracking scheduled silent mode timer',
-                taskIcon: {name: 'ic_launcher', type: 'mipmap'},
-                parameters: {delay: 1000, schedule: selectedSchedule},
-                foregroundServiceType: 'dataSync',
-            });
-        } else {
-            setPhoneNormal();
-            setSilentMode(false);
-            setRunning(false);
-
-            setActiveScheduleId(null);
-            // REMOVE TIMER STATE
-            await AsyncStorage.removeItem('timer_state');
-
-            await BackgroundService.stop();
+        const saved = await postTimerScheduleApiCall(payload);
+        if (!saved) {
+            setArrayEvents(previous);
+            return;
         }
-    };
-
-    const formatTime = sec => {
-        let h = String(Math.floor(sec / 3600)).padStart(2, '0');
-        let m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-        let s = String(sec % 60).padStart(2, '0');
-        return `${h}:${m}:${s}`;
-    };
-
-    const convertTimeToTimestamp = timeString => {
-        const today = moment().format('YYYY-MM-DD');
-        const dateTime = moment(`${today} ${timeString}`, 'YYYY-MM-DD HH:mm');
-        return dateTime.unix();
-    };
-
-    const checkAndRunTimer = async schedule => {
-        if (arrayEvents && arrayEvents.length > 0) {
-            if (schedule) {
-                const start = convertTimeToTimestamp(schedule.startTime);
-                const end = convertTimeToTimestamp(schedule.endTime);
-                const now = moment().unix();
-
-                if (now >= start && now <= end) {
-                    setRunning(true);
-                    const remaining = end - now;
-                    setTimeLeft(formatTime(remaining));
-                    // await AsyncStorage.setItem(
-                    //     'timer_state',
-                    //     JSON.stringify({start, end}),
-                    // );
-                    const existingData =
-                        JSON.parse(await AsyncStorage.getItem('timer_state')) ||
-                        {};
-
-                    const newData = {
-                        ...existingData, // keep previous data (like scheduleId, isEnabled)
-                        scheduleId: schedule.id, // ensure scheduleId is included
-                        start,
-                        end,
-                        isEnabled: schedule.enabled, // optional but recommended
-                    };
-
-                    await AsyncStorage.setItem(
-                        'timer_state',
-                        JSON.stringify(newData),
-                    );
-                } else {
-                    console.log('Else call');
-                    setRunning(false);
-                    setTimeLeft('00:00:00');
-                    await AsyncStorage.removeItem('timer_state');
-                }
-            } else {
-                setRunning(false);
-                setTimeLeft('00:00:00');
-                await AsyncStorage.removeItem('timer_state');
-            }
-        }
-    };
-
-    const backgroundTask = async ({delay, schedule}) => {
-        for (;;) {
-            await new Promise(r => setTimeout(r, delay));
-            await checkAndRunTimer(schedule);
-        }
+        pushSchedulesToEngine(updatedData)
+            .then(setEngineState)
+            .catch(() => {});
     };
 
     const onPressAddNewSchedule = () => {
@@ -630,148 +288,65 @@ export default function HomeScreen() {
             ) {
                 const responseData = response?.data;
                 if (responseData?.status === '1') {
-                    setArrayEvents(prevEvents =>
-                        prevEvents.filter(
-                            item => item.id !== payload.schedule_id,
-                        ),
+                    // Drop its alarms right away, not on the next refresh.
+                    const remaining = arrayEvents.filter(
+                        item => item.id !== payload.schedule_id,
                     );
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                    setArrayEvents(remaining);
+                    pushSchedulesToEngine(remaining)
+                        .then(setEngineState)
+                        .catch(() => {});
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
 
+    // Loads schedules and hands them to the native engine, which owns the
+    // alarms. On failure the engine keeps its last copy (works offline).
     const getScheduleApiCall = async () => {
         const url = EndPoints.getScheduleTimerData;
         const payload = {
             userId: Constants.commonConstant.appUserId,
         };
 
-        await APICall('get', payload, url).then(response => {
-            setIsLoading(false);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-                if (responseData?.status === '1') {
-                    if (
-                        responseData?.result &&
-                        responseData?.result?.length > 0
-                    ) {
-                        const formattedData = responseData.result.map(
-                            (item, index) => ({
-                                id: item.schedule_id || index,
-                                startTime: item.from_time || '00:00',
-                                endTime: item.to_time || '00:00',
-                                days: item.selected_days || 'Everyday',
-                                // enabled: false,
-                                enabled: item.isTimerEnabled === true || false,
-                            }),
-                        );
-
-                        // const formattedData = responseData.result.map(
-                        //     (item, index) => ({
-                        //         id: 1,
-                        //         startTime: '12:12 AM',
-                        //         endTime: '01:00 AM',
-                        //         days: 'Everyday',
-                        //         enabled: false,
-                        //     }),
-                        // );
-
-                        setArrayEvents(formattedData);
-                        // restoreTimerState();
-                    } else {
-                        setArrayEvents([]);
-                    }
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('get', payload, url);
+        setIsLoading(false);
+        const ok = response?.statusCode === Constants.apiStatusCode.success;
+        if (ok && (response?.data?.status === '1' || response?.data?.status === '0')) {
+            // status '0' = the user has no schedules yet (not an error).
+            const rows = Array.isArray(response.data.result)
+                ? response.data.result
+                : [];
+            const formattedData = rows.map(normalizeScheduleRow);
+            setArrayEvents(formattedData);
+            setScheduleLoadError(false);
+            pushSchedulesToEngine(formattedData)
+                .then(setEngineState)
+                .catch(() => {});
+        } else {
+            // Shown inline with a retry; the engine keeps its last copy, so
+            // schedules still run offline.
+            setScheduleLoadError(true);
+        }
     };
 
+    // Returns true when the backend accepted the change.
     const postTimerScheduleApiCall = async payload => {
         const url = EndPoints.postTimerSchedule;
-
-        await APICall('post', payload, url).then(response => {
-            setIsLoading(false);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-                if (responseData?.status === '1') {
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('post', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            response?.data?.status === '1'
+        ) {
+            return true;
+        }
+        showApiErrorAlert(Constants.commonConstant.appName, response);
+        return false;
     };
 
     // Render Component
@@ -874,12 +449,7 @@ export default function HomeScreen() {
     // );
 
     const renderCustomScheduleItem = ({item}) => {
-        const now = moment().unix();
-        const startTimestamp = convertTimeToTimestamp(item.startTime);
-        const endTimestamp = convertTimeToTimestamp(item.endTime);
-
-        // If event end time is passed, disable the switch
-        const isPastEvent = now > endTimestamp;
+        const isRunning = activeScheduleIds.includes(String(item.id));
 
         return (
             <View style={styles.containerView}>
@@ -934,7 +504,7 @@ export default function HomeScreen() {
                                         width: wp('65%'),
                                         justifyContent: 'space-between',
                                     }}>
-                                    <Text style={styles.addSchedule}>
+                                    <Text style={[styles.addSchedule, {color: link}]}>
                                         Add Schedule ＋
                                     </Text>
 
@@ -945,11 +515,8 @@ export default function HomeScreen() {
                                         }}>
                                         <TouchableOpacity
                                             style={{margin: 5}}
-                                            onPress={() => onPressEdit(item)}
-                                            disabled={
-                                                activeScheduleId === item.id
-                                            }>
-                                            <Text style={{color: '#D6721E'}}>
+                                            onPress={() => onPressEdit(item)}>
+                                            <Text style={{color: link}}>
                                                 Edit
                                             </Text>
                                         </TouchableOpacity>
@@ -957,11 +524,8 @@ export default function HomeScreen() {
                                             style={{margin: 5}}
                                             onPress={() => {
                                                 onPressDelete(item.id);
-                                            }}
-                                            disabled={
-                                                activeScheduleId === item.id
-                                            }>
-                                            <Text style={{color: '#D6721E'}}>
+                                            }}>
+                                            <Text style={{color: link}}>
                                                 Delete
                                             </Text>
                                         </TouchableOpacity>
@@ -974,12 +538,8 @@ export default function HomeScreen() {
                             style={styles.toggleWrapper}
                             onValueChange={() => toggleSwitch(item.id)}
                             // trackColor={{false: '#444', true: '#ff9800'}}
-                            trackColor={{
-                                false: isPastEvent ? '#ccc' : '#444', // gray if disabled
-                                true: isPastEvent ? '#ccc' : '#ff9800', // gray if disabled
-                            }}
+                            trackColor={{false: '#444', true: '#ff9800'}}
                             thumbColor={item.enabled ? '#fff' : '#fff'}
-                            disabled={isPastEvent}
                         />
                     </View>
                 </View>
@@ -1063,15 +623,86 @@ export default function HomeScreen() {
                         </Text>
 
                         <TouchableOpacity
-                            // onPress={toggleSilentMode}
+                            onPress={onPressSilentButton}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                                silentActive
+                                    ? 'Turn Silent Focus off'
+                                    : 'Turn Silent Focus on'
+                            }
                             style={styles.silentButtonWrapper}>
                             <ModernSilentButton
-                                silentMode={silentMode}
+                                silentMode={silentActive}
                                 timerFormatted={
-                                    running ? timeLeft : formatTime(timer)
+                                    silenceEnd
+                                        ? formatCountdown(
+                                              (silenceEnd - now) / 1000,
+                                          )
+                                        : 'ON'
                                 }
                             />
                         </TouchableOpacity>
+                        <View style={styles.engineStatus}>
+                            <Text
+                                style={[
+                                    styles.engineStatusTitle,
+                                    {color: isDark ? 'white' : '#1C1C1C'},
+                                ]}>
+                                {status.title}
+                            </Text>
+                            {!!status.detail && (
+                                <Text style={styles.engineStatusDetail}>
+                                    {status.detail}
+                                </Text>
+                            )}
+                            {!!status.next && (
+                                <Text style={styles.engineStatusDetail}>
+                                    {status.next}
+                                </Text>
+                            )}
+                            {status.warning === 'DND_ACCESS_MISSING' && (
+                                <TouchableOpacity
+                                    onPress={openDndAccessSettings}
+                                    style={styles.engineWarning}>
+                                    <Text style={styles.engineWarningText}>
+                                        Silent Focus can't control this phone
+                                        without Do Not Disturb access. Tap to
+                                        open Settings.
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            {!!status.locationIssue && (
+                                <TouchableOpacity
+                                    onPress={onPressLocationIssue}
+                                    style={styles.engineWarning}>
+                                    <Text style={styles.engineWarningText}>
+                                        {status.locationIssue.message}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            {!!status.calendarIssue && (
+                                <TouchableOpacity
+                                    onPress={onPressCalendarIssue}
+                                    style={styles.engineWarning}>
+                                    <Text style={styles.engineWarningText}>
+                                        {status.calendarIssue.message}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            {status.warning === 'EXACT_ALARM_MISSING' && (
+                                <TouchableOpacity
+                                    onPress={openExactAlarmSettings}
+                                    style={styles.engineWarning}>
+                                    <Text style={styles.engineWarningText}>
+                                        Schedules may start a few minutes late.
+                                        Tap to allow "Alarms & reminders".
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            <LearningSuggestionCard
+                                manualOnCount={manualOnCount}
+                            />
+                        </View>
                         <View>
                             <Text
                                 style={[
@@ -1090,12 +721,37 @@ export default function HomeScreen() {
                             </Text>
                             <FlatList
                                 key={'scheduleData'}
-                                data={arrayEvents}
+                                // Legacy rows the old Home created from calendar
+                                // events; calendar automation now reads the
+                                // device calendar directly.
+                                data={arrayEvents.filter(
+                                    item => item.eventType !== 'calendar',
+                                )}
                                 keyExtractor={item => item.id.toString()}
                                 renderItem={renderCustomScheduleItem}
                                 extraData={arrayEvents}
                                 keyboardShouldPersistTaps={'handled'}
                                 scrollEnabled={false}
+                                ListEmptyComponent={
+                                    isLoading ? null : scheduleLoadError ? (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setIsLoading(true);
+                                                getScheduleApiCall();
+                                            }}
+                                            accessibilityRole="button">
+                                            <Text style={styles.scheduleEmpty}>
+                                                Couldn't load your schedules.
+                                                Saved schedules keep running on
+                                                this phone. Tap to retry.
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ) : (
+                                        <Text style={styles.scheduleEmpty}>
+                                            No schedules yet. Tap + to add one.
+                                        </Text>
+                                    )
+                                }
                             />
                         </View>
                         {/* {silentMode ? (
@@ -1108,7 +764,7 @@ export default function HomeScreen() {
                                         ]}>
                                         Missed Notification
                                     </Text>
-                                    <Text style={styles.seeAll}>See all</Text>
+                                    <Text style={[styles.seeAll, {color: link}]}>See all</Text>
                                     <FlatList
                                         key={'notificationData'}
                                         data={dummyNotifications}
@@ -1172,6 +828,13 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+    scheduleEmpty: {
+        fontSize: wp('3.6%'),
+        color: '#777',
+        textAlign: 'center',
+        marginVertical: hp('2%'),
+        paddingHorizontal: wp('6%'),
+    },
     container: {
         flex: 1,
         paddingTop: hp('1%'),
@@ -1328,4 +991,30 @@ const styles = StyleSheet.create({
         tintColor: Colors.white,
     },
     timer: {fontSize: 32, fontWeight: 'bold'},
+    engineStatus: {
+        alignItems: 'center',
+        marginBottom: hp('2%'),
+    },
+    engineStatusTitle: {
+        fontSize: wp('4.2%'),
+        fontWeight: '600',
+    },
+    engineStatusDetail: {
+        fontSize: wp('3.4%'),
+        color: '#888',
+        marginTop: hp('0.4%'),
+        textAlign: 'center',
+    },
+    engineWarning: {
+        marginTop: hp('1%'),
+        paddingVertical: hp('1%'),
+        paddingHorizontal: wp('4%'),
+        borderRadius: wp('3%'),
+        backgroundColor: '#FDECEA',
+    },
+    engineWarningText: {
+        color: '#B3261E',
+        fontSize: wp('3.3%'),
+        textAlign: 'center',
+    },
 });

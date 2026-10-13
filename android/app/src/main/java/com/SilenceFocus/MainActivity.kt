@@ -24,6 +24,10 @@ class MainActivity : ReactActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         SplashScreen.show(this)  // here
-        super.onCreate(savedInstanceState)
+        // Round 4: react-native-screens fragments must never be restored. With the
+        // saved state, a font-size or display-size change (activity recreated)
+        // crashed with "Screen fragments should never be restored". JS state is
+        // kept by React Native itself; nothing relies on the native saved state.
+        super.onCreate(null)
     }
 }

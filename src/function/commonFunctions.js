@@ -4,14 +4,17 @@ import NetInfo from '@react-native-community/netinfo';
 
 // Mics Constants
 // import baseLocal from '../locales/baseLocalization';
-import {Constants, Emitter, Responsive} from '../utils/theme';
-import {defaultUser} from '../utils/theme/constants';
-import baseLocal from '../componentes/locales/baseLocalization';
+import {Responsive} from '../utils/theme';
+import {clearSession} from '../utils/session';
+import i18n from '../componentes/locales/baseLocalization';
+// import baseLocal from '../componentes/locales/baseLocalization';
 
 // Common Function
 // Localization
-export const localize = localizeStr => baseLocal.t(localizeStr);
+// export const localize = localizeStr => baseLocal.t(localizeStr);
 
+
+export const localize = key => i18n.t(key);
 // Async Storage
 export const setAsyncData = async (keyName, dataArray) => {
     await AsyncStorage.setItem(keyName, JSON.stringify(dataArray));
@@ -53,18 +56,11 @@ export const height = pixel => {
     return Responsive.heightPercentageToDP(pixel / 8);
 };
 
-// Logout
-export const logout = () => {
-    clearLocalStorage();
-};
+// Logout - removes only the session keys (see utils/session), never the
+// whole AsyncStorage.
+export const logout = () => clearSession();
 
-export const clearLocalStorage = () => {
-    AsyncStorage.clear();
-    Constants.commonConstant.appUserId = 0;
-    Constants.commonConstant.appUser = defaultUser;
-    Constants.commonConstant.appToken = '';
-    Emitter.emit(Constants.eventListenerKeys.logoutListener, null);
-};
+export const clearLocalStorage = () => clearSession();
 
 export const convertTo24HourFormat = timeString => {
     const [time, period] = timeString.split(' ');

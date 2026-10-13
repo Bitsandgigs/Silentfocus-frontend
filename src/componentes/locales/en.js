@@ -11,7 +11,7 @@ export default {
     SF10: 'Starting Time',
     SF11: 'Select',
     SF12: 'Ending Time',
-    SF13: 'Invalid time format. Please try again.',
+    SF13: 'Choose a different time',
     SF14: 'To time is greater than from date and time. Please select other time.',
     SF15: 'Select other time',
     SF16: 'Confirm',

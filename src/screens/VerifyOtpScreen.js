@@ -30,7 +30,7 @@ import {Colors, Constants} from '../utils/theme';
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {showAlert} from '../function/Alert';
+import {showAlert, showApiErrorAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import CommonStyle from '../utils/theme/commonStyle';
 import {
@@ -40,6 +40,7 @@ import {
     useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
 import screens from '../utils/theme/screens';
+import {getAppConfig} from '../utils/appConfig';
 
 export default function VerifyOtpScreen() {
     // navigation
@@ -51,7 +52,9 @@ export default function VerifyOtpScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [isError, setIsError] = useState(false);
     const [value, setValue] = useState('');
-    const [seconds, setSeconds] = useState(60);
+    // Server-side resend cooldown (GET /app-config; default 30 s).
+    const resendCooldown = getAppConfig().otpResendCooldownSeconds;
+    const [seconds, setSeconds] = useState(resendCooldown);
     const CELL_COUNT = 4;
 
     const [autoCompleteType, setAutoCompleteType] = useState();
@@ -105,10 +108,13 @@ export default function VerifyOtpScreen() {
         const payload = {
             email: email ? email : '',
         };
-        setSeconds(60);
+        setSeconds(resendCooldown);
         ResendOtpApiCall(payload);
     };
 
+    // POST reset-password {email, otp} -> result.reset_token: a one-time,
+    // short-lived token create-new-password requires. It is only passed to
+    // the next screen in memory - never stored or logged.
     const VerifyOtpApiCall = async payload => {
         const url = EndPoints.resetPassword;
 
@@ -120,40 +126,36 @@ export default function VerifyOtpScreen() {
             ) {
                 const responseData = response?.data;
 
-                if (responseData?.status === '1') {
+                const resetToken = responseData?.result?.reset_token;
+                if (
+                    responseData?.status === '1' &&
+                    typeof resetToken === 'string' &&
+                    resetToken !== ''
+                ) {
+                    setValue('');
                     navigation.navigate(screens.ResetPasswordScreen, {
                         email: payload.email,
+                        resetToken,
                     });
-                } else if (responseData?.status === '0') {
+                } else if (responseData?.status === '1') {
+                    // Verified but no reset token: the password can't be set.
                     showAlert(
                         Constants.commonConstant.appName,
-                        responseData?.message,
+                        'Your code was verified, but the password reset could not be started. Please request a new code and try again.',
                     );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
 
+    // This screen is the password-reset flow: a new reset OTP comes from
+    // forgot-password again (resend-otp is for pending sign-ups only).
     const ResendOtpApiCall = async payload => {
-        const url = EndPoints.resendOtp;
+        const url = EndPoints.forgotPassword;
 
         await APICall('post', payload, url).then(response => {
             setIsLoading(false);
@@ -167,30 +169,11 @@ export default function VerifyOtpScreen() {
                     // navigation.navigate(screens.ResetPasswordScreen, {
                     //     email: payload.email,
                     // });
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };

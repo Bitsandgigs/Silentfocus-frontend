@@ -31,5 +31,5 @@ export default function CustomLoader(props) {
                 </View>
             )}
         </>
-    ); s
+    );
 }

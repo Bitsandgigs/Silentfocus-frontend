@@ -1,9 +1,10 @@
+// Production API (verified live, read-only checks 2026-10-01).
 export default {
-  baseURL: 'http://91.108.120.61:8001/SilentFocus/',
+  baseURL: 'https://silent.rpaywin.com/',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/x-www-form-urlencoded',
   },
 
-  timeOut: 30000,
+  timeout: 1000 * 60 * 2,
 };

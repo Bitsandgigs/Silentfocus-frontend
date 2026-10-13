@@ -8,46 +8,75 @@ import APIConfig from '../../config';
 
 // Mics Constants
 import { apiStatusCode, commonConstant } from '../theme/constants';
-import { checkInternetConnection, logout } from '../../function/commonFunctions';
+import { checkInternetConnection } from '../../function/commonFunctions';
+import { bearerFor, handleAuthRejected, isAuthFailure } from '../session';
 import { Constants, Emitter } from '../theme';
 
 const axiosInstance = Axios.create({
   baseURL: APIConfig.baseURL,
   headers: APIConfig.headers,
+  timeout: APIConfig.timeout,
 });
 
+// Debug-only request trace. Never logs headers (bearer token), request
+// bodies (passwords, notification contents) or response bodies.
+const debugTrace = (method, url, status) => {
+  if (__DEV__) {
+    console.log(`[API] ${String(method).toUpperCase()} ${url} -> ${status}`);
+  }
+};
+
 axiosInstance.interceptors.request.use(
-  async config => {
+  config => {
     const { appToken } = commonConstant;
-    if (appToken !== '') {
-      config.headers.Authorization = appToken;
+    // The 401 confirmation carries the token it checks.
+    if (appToken && !config.sfAuthProbe) {
+      // Backend (Laravel Sanctum) requires the "Bearer" scheme
+      config.headers.Authorization = bearerFor(appToken);
     }
-    console.log('config =====', config);
     return config;
   },
-  error => {
-    return Promise.reject(error);
-  },
+  error => Promise.reject(error),
 );
 
+// Read-only authenticated request used to confirm a 401 before the session
+// is treated as expired: 'REJECTED' (auth failure again), 'VALID' (any
+// other answer from the server - the token works) or 'UNKNOWN' (network
+// error / 5xx: nothing is decided). Never logs the token.
+export const AUTH_PROBE_ENDPOINT = 'settings';
+
+export const confirmSessionRejected = async token => {
+  try {
+    await axiosInstance({
+      method: 'get',
+      url: AUTH_PROBE_ENDPOINT,
+      headers: { Authorization: bearerFor(token) },
+      sfAuthProbe: true,
+    });
+    return 'VALID';
+  } catch (error) {
+    const response = error?.response;
+    if (!response) return 'UNKNOWN';
+    if (isAuthFailure(response.status, response.data)) return 'REJECTED';
+    return response.status >= 500 ? 'UNKNOWN' : 'VALID';
+  }
+};
+
 axiosInstance.interceptors.response.use(
-  async response => {
-    return response;
-  },
+  response => response,
   error => {
-    const status = error?.response?.status;
-    if (status === apiStatusCode.invalidContent) {
-      // Handle invalidContent
-    } else if (status === apiStatusCode.unAuthorized) {
-      if (Constants.commonConstant.appToken) {
-        logout();
-      }
-    } else if (status === 403) {
-      // Handle forbidden
-    } else if (status === apiStatusCode.serverError) {
-      // Handle serverError
+    // Only a confirmed auth rejection ends the session - and then as an
+    // expiry that keeps the account's data (session.handleAuthRejected);
+    // 403s, 5xx and network errors leave the user signed in.
+    const response = error?.response;
+    if (
+      response &&
+      !error?.config?.sfAuthProbe &&
+      isAuthFailure(response.status, response.data)
+    ) {
+      handleAuthRejected(error?.config?.headers, { confirm: confirmSessionRejected });
     }
-    return Promise.resolve(error?.response);
+    return Promise.reject(error);
   },
 );
 
@@ -55,6 +84,30 @@ const getFormData = object => {
   const formData = new FormData();
   Object.keys(object).forEach(key => formData.append(key, object[key]));
   return formData;
+};
+
+// Turns an axios error into the {statusCode, data} shape screens consume.
+// `sentToken`: only a request that carried a session token can have its
+// session rejected; a 401 from e.g. login (wrong password) is shown as-is.
+// Exported for tests.
+export const toErrorResult = (error, sentToken = false) => {
+  const response = error?.response;
+  if (response) {
+    if (sentToken && isAuthFailure(response.status, response.data)) {
+      return {
+        statusCode: apiStatusCode.unAuthorized,
+        data: response.data,
+        isAuthError: true,
+      };
+    }
+    return { statusCode: response.status, data: response.data };
+  }
+  return {
+    statusCode: apiStatusCode.networkError,
+    data: null,
+    isNetworkError: true,
+    message: error?.message || 'Network Error',
+  };
 };
 
 const APICall = async (
@@ -71,12 +124,16 @@ const APICall = async (
   const internet = await checkInternetConnection();
   if (!internet) {
     Emitter.emit(Constants.eventListenerKeys.internetConnectionListener);
-    return;
+    return {
+      statusCode: apiStatusCode.networkError,
+      data: null,
+      isNetworkError: true,
+      isOffline: true,
+    };
   }
   const apiMethod = method.toLowerCase();
   const config = {
     method: apiMethod,
-    timeout: 1000 * 60 * 2,
   };
 
   if (url) {
@@ -104,22 +161,20 @@ const APICall = async (
     config.headers = headers;
   }
 
-  return new Promise(resolve => {
-    axiosInstance(config)
-      .then(res => {
-        resolve({ statusCode: res.status, data: res.data });
-      })
-      .catch(error => {
-        console.log('error =====', JSON.stringify(error));
-        if (error?.response) {
-          resolve({
-            statusCode: error.response.status,
-            data: error.response.data,
-          });
-        }
-        resolve({ statusCode: 500, data: 'Something went to wrong!' });
-      });
-  });
+  const sentToken = !!commonConstant.appToken;
+  try {
+    const res = await axiosInstance(config);
+    debugTrace(apiMethod, url, res.status);
+    return { statusCode: res.status, data: res.data };
+  } catch (error) {
+    const result = toErrorResult(error, sentToken);
+    debugTrace(
+      apiMethod,
+      url,
+      result.isNetworkError ? `network error (${result.message})` : result.statusCode,
+    );
+    return result;
+  }
 };
 
 export default APICall;

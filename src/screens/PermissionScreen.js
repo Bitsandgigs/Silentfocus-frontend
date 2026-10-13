@@ -25,9 +25,16 @@ import NotificationIcon from '../assets/svgs/Notification';
 import Toggle from '../assets/svgs/Toggle';
 import {Permissions, Responsive} from '../utils/theme';
 import screens from '../utils/theme/screens';
-import RNAndroidNotificationListener, {
-    RNAndroidNotificationListenerHeadlessJsName,
-} from 'react-native-android-notification-listener';
+import {
+    ensureLocationAutomationPermissions,
+    getCalendarPermission,
+    getLocationPermissionState,
+    requestCalendarPermission,
+} from '../utils/locationPermissions';
+import {
+    hasNotificationAccess,
+    openNotificationAccessSettings,
+} from '../utils/comms';
 
 const {width, height} = Dimensions.get('window');
 
@@ -42,8 +49,6 @@ const PermissionScreen = () => {
     const [isCalendarEnabled, setIsCalendarEnabled] = useState(false);
     const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
     const [isRnNotificationsEnabled, setIsRnNoticationEnable] = useState(false);
-    const [isCallLogEnabled, setIsCallLogEnabled] = useState(false);
-    const [isSmsEnabled, setIsSmsEnabled] = useState(false);
     const [isPhoneStateEnabled, setIsPhoneStateEnabled] = useState(false);
     const [isDNDEnabled, setIsDNDEnabled] = useState(false);
     const [appState, setAppState] = useState(AppState.currentState);
@@ -128,20 +133,17 @@ const PermissionScreen = () => {
         checkCalender();
         checkNotification();
         checkPhoneStatePermission();
-        checkCallLogPermission();
-        checkSmsPermission();
     }, []);
 
+    // Location counts as on only when Silent Zones can actually work:
+    // precise location + "Allow all the time".
     const checkLocation = async () => {
-        const checkLocationPermission =
-            await Permissions.checkLocationPermission();
-        setIsLocationEnabled(checkLocationPermission);
+        const state = await getLocationPermissionState();
+        setIsLocationEnabled(state.automationReady);
     };
 
     const checkCalender = async () => {
-        const checkCalenderPermission =
-            await Permissions.checkCalenderPermission();
-        setIsCalendarEnabled(checkCalenderPermission);
+        setIsCalendarEnabled((await getCalendarPermission()) === 'granted');
     };
 
     const checkNotification = async () => {
@@ -156,42 +158,19 @@ const PermissionScreen = () => {
         setIsPhoneStateEnabled(checkPhoneStatePermissionEnable);
     };
 
-    const checkCallLogPermission = async () => {
-        const checkCallLogPermissionEnable =
-            await Permissions.checkCallLogPermission();
-        setIsCallLogEnabled(checkCallLogPermissionEnable);
-    };
-
-    const checkSmsPermission = async () => {
-        const checkSmsPermissionEnable = await Permissions.checkSMSPermission();
-        setIsSmsEnabled(checkSmsPermissionEnable);
-    };
-
     // Function
-    const onLocationPermission = () => {
-        Permissions.requestLocationPermission(requestLocationPermission);
+    // Foreground first, then background after the in-app explanation.
+    const onLocationPermission = async () => {
+        const state = await ensureLocationAutomationPermissions();
+        setIsLocationEnabled(state.automationReady);
     };
 
-    const onCalendarPermission = () => {
-        Permissions.requestCalenderPermission(requestCalenderPermission);
+    const onCalendarPermission = async () => {
+        setIsCalendarEnabled((await requestCalendarPermission()) === 'granted');
     };
 
-    const onCalllogPermission = () => {
-        Permissions.requestCallLogPermission(requestCallLogPermission);
-    };
-    const onSmsPermission = () => {
-        Permissions.requestSMSPermission(requestSMSPermission);
-    };
     const onPhoneStatePermission = () => {
         Permissions.requestPhoneStatePermission(requestPhoneStatePermission);
-    };
-
-    const requestCallLogPermission = () => {
-        setIsCallLogEnabled(!isCallLogEnabled);
-    };
-
-    const requestSMSPermission = () => {
-        setIsSmsEnabled(!isSmsEnabled);
     };
 
     const requestPhoneStatePermission = () => {
@@ -203,17 +182,12 @@ const PermissionScreen = () => {
             requestNotificationPermission,
         );
     };
-    const requestLocationPermission = () => {
-        setIsLocationEnabled(!isLocationEnabled);
-    };
-
-    const requestCalenderPermission = () => {
-        setIsCalendarEnabled(!isCalendarEnabled);
-    };
 
     const onRnNotificationPermission = async () => {
         if (!isRnNotificationsEnabled) {
-            await RNAndroidNotificationListener.requestPermission();
+            // Native listener (messages while silent + auto reply).
+            lastOpenedSettingRef.current = 'notification';
+            openNotificationAccessSettings();
         } else {
             setIsRnNoticationEnable(false);
         }
@@ -248,8 +222,7 @@ const PermissionScreen = () => {
     /** Check notification listener permission */
     const checkNotificationPermission = async () => {
         try {
-            const status =
-                await RNAndroidNotificationListener.getPermissionStatus();
+            const status = await hasNotificationAccess();
             const enabled = normalizePermission(status);
             console.log(
                 '[Permission] notification status:',
@@ -480,87 +453,15 @@ const PermissionScreen = () => {
                                             styles.cardDescription,
                                             {color: subtitleColor},
                                         ]}>
-                                        To read and detect missed calls and
-                                        messages from other apps while your
-                                        phone is silent.
+                                        To see messages that arrive while
+                                        Silent Focus is on and send your
+                                        automatic replies. Message text is
+                                        never stored or uploaded.
                                     </Text>
                                 </View>
                                 <TouchableOpacity
                                     onPress={onRnNotificationPermission}>
                                     <Toggle isOn={isRnNotificationsEnabled} />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* call log */}
-                            <View
-                                style={[
-                                    styles.card,
-                                    {backgroundColor: cardColor},
-                                ]}>
-                                <View style={styles.icon}>
-                                    <NotificationIcon
-                                        width={24}
-                                        height={24}
-                                        color={orange}
-                                    />
-                                </View>
-                                <View style={styles.textBlock}>
-                                    <Text
-                                        style={[
-                                            styles.cardTitle,
-                                            {color: textColor},
-                                        ]}>
-                                        Call Log Access
-                                    </Text>
-                                    <Text
-                                        style={[
-                                            styles.cardDescription,
-                                            {color: subtitleColor},
-                                        ]}>
-                                        Allows the app to read your call history
-                                        so it can detect missed or incoming
-                                        calls while your phone is silent
-                                    </Text>
-                                </View>
-                                <TouchableOpacity onPress={onCalllogPermission}>
-                                    <Toggle isOn={isCallLogEnabled} />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* sms */}
-                            <View
-                                style={[
-                                    styles.card,
-                                    {backgroundColor: cardColor},
-                                ]}>
-                                <View style={styles.icon}>
-                                    <NotificationIcon
-                                        width={24}
-                                        height={24}
-                                        color={orange}
-                                    />
-                                </View>
-                                <View style={styles.textBlock}>
-                                    <Text
-                                        style={[
-                                            styles.cardTitle,
-                                            {color: textColor},
-                                        ]}>
-                                        SMS Access
-                                    </Text>
-                                    <Text
-                                        style={[
-                                            styles.cardDescription,
-                                            {color: subtitleColor},
-                                        ]}>
-                                        Allows the app to read incoming SMS
-                                        messages so it can detect missed
-                                        messages and notify you even when your
-                                        phone is in silent mode.
-                                    </Text>
-                                </View>
-                                <TouchableOpacity onPress={onSmsPermission}>
-                                    <Toggle isOn={isSmsEnabled} />
                                 </TouchableOpacity>
                             </View>
 
@@ -616,8 +517,6 @@ const PermissionScreen = () => {
                             !isNotificationsEnabled ||
                             !isDNDEnabled ||
                             !isRnNotificationsEnabled ||
-                            !isCallLogEnabled ||
-                            !isSmsEnabled ||
                             !isPhoneStateEnabled
                         }
                     />

@@ -31,7 +31,7 @@ import {validatePassword} from '../function/validation';
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {showAlert} from '../function/Alert';
+import {showApiErrorAlert} from '../function/Alert';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import CustomTextInputView from '../componentes/CustomTextInputView/CustomTextInputView';
 import screens from '../utils/theme/screens';
@@ -40,7 +40,9 @@ export default function ResetPasswordScreen() {
     // navigation
     const navigation = useNavigation();
     const route = useRoute();
-    const {email} = route.params;
+    // resetToken: from POST reset-password (VerifyOtpScreen). Required by
+    // create-new-password; one-time use, expires after ~10 minutes.
+    const {email, resetToken} = route.params || {};
 
     // useState
     const [isShowPassword, setIsShowPassword] = useState(false);
@@ -101,6 +103,7 @@ export default function ResetPasswordScreen() {
         onSubmit: values => {
             const payload = {
                 email: email ? email : '',
+                reset_token: resetToken || '',
                 new_password: values.password ? values.password : '',
                 confirm_password: values.confirmPassword
                     ? values.confirmPassword
@@ -140,30 +143,11 @@ export default function ResetPasswordScreen() {
 
                 if (responseData?.status === '1') {
                     navigation.navigate(screens.LoginScreen);
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };

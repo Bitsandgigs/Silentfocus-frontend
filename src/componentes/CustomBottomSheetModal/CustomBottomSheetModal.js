@@ -6,6 +6,7 @@ import {
     Text,
     TouchableOpacity,
     View,
+    useColorScheme,
 } from 'react-native';
 
 // Lib
@@ -25,6 +26,8 @@ export default function CustomBottomSheetModal(props) {
         isBackdropPress = true,
         children,
     } = props;
+
+    const isDark = useColorScheme() === 'dark';
 
     // useState
     const [isShowModal, setIsShowModal] = useState(false);
@@ -63,7 +66,7 @@ export default function CustomBottomSheetModal(props) {
             avoidKeyboard={false}
             statusBarTranslucent={Platform.OS !== 'android'}>
             <StatusBar
-                barStyle={'dark-content'}
+                barStyle={isDark ? 'light-content' : 'dark-content'}
                 backgroundColor={Colors.darkBlackOpacity}
             />
             <View style={styles.bottomSheetContainer}>

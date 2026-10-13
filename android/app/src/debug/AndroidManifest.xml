@@ -5,5 +5,29 @@
     <application
         android:usesCleartextTraffic="true"
         tools:targetApi="28"
-        tools:ignore="GoogleAppIndexingWarning"/>
+        tools:ignore="GoogleAppIndexingWarning">
+
+        <!-- Client Issue #9: debug-only WhatsApp call notification probe.
+             Records nothing unless built with SF_WHATSAPP_CALL_PROBE=true;
+             otherwise it only wipes data an earlier probe build left. -->
+        <provider
+            android:name="com.SilenceFocus.diagnostics.WhatsAppCallProbeInstaller"
+            android:authorities="${applicationId}.waprobe"
+            android:exported="false" />
+
+        <!-- Client Issues #10/#11: debug-only synthetic Activity test harness.
+             Local ADB only: DUMP permission (adb shell holds it, apps can't),
+             explicit component required. Seeding needs SF_ACTIVITY_TEST_HARNESS
+             and an empty SF_DEBUG_SERVER_WRITES_ACCOUNT_ID. -->
+        <receiver
+            android:name="com.SilenceFocus.diagnostics.ActivityTestHarnessReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
+        <!-- Expires leftover synthetic rows (> 2 h) at process start. -->
+        <provider
+            android:name="com.SilenceFocus.diagnostics.ActivityTestHarnessJanitor"
+            android:authorities="${applicationId}.testharness"
+            android:exported="false" />
+    </application>
 </manifest>

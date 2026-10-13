@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.firebase.crashlytics"
 
 
 /**
@@ -58,7 +59,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -73,6 +74,46 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Build-time configuration that must not live in source control. Read from
+// -P / ~/.gradle/gradle.properties, then environment, then the gitignored
+// android/local.properties:
+//   SF_MAPS_API_KEY            Google Maps/Places key (restrict it to this
+//                              package + signing SHA-1 in Google Cloud)
+//   SF_UPLOAD_STORE_FILE, SF_UPLOAD_STORE_PASSWORD,
+//   SF_UPLOAD_KEY_ALIAS, SF_UPLOAD_KEY_PASSWORD   Play upload key
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+// The first source that defines the name wins, even with an empty value, so
+// `-PSF_DEBUG_SERVER_WRITES_ACCOUNT_ID=` really overrides local.properties.
+def buildSecret = { String name ->
+    def v = project.findProperty(name)
+    if (v == null) v = System.getenv(name)
+    if (v == null) v = localProps.getProperty(name)
+    return v != null ? v.toString().trim() : null
+}
+def mapsApiKey = buildSecret('SF_MAPS_API_KEY') ?: ''
+// Developer test switch for server writes in DEBUG builds only (see
+// src/utils/serverSync.js). Value: the numeric user id of a dedicated test
+// account; writes then happen only while that account is signed in. Not a
+// credential. Default empty = debug builds never write. Ignored by release.
+def debugWritesAccount = (buildSecret('SF_DEBUG_SERVER_WRITES_ACCOUNT_ID') ?: '')
+if (!(debugWritesAccount ==~ /^[0-9]*$/)) {
+    throw new GradleException('SF_DEBUG_SERVER_WRITES_ACCOUNT_ID must be a numeric user id (or empty).')
+}
+// Client Issue #9: debug-only WhatsApp call notification probe. Default off;
+// only a debug build made with SF_WHATSAPP_CALL_PROBE=true records anything
+// (see src/debug/.../diagnostics/WhatsAppCallProbe.kt). Ignored by release.
+def whatsAppCallProbe = (buildSecret('SF_WHATSAPP_CALL_PROBE') == 'true')
+// Client Issues #10/#11: debug-only synthetic Activity test harness. Default
+// off; seeding also requires SF_DEBUG_SERVER_WRITES_ACCOUNT_ID to be empty
+// (see src/debug/.../diagnostics/ActivityTestHarness.kt). Ignored by release.
+def activityTestHarness = (buildSecret('SF_ACTIVITY_TEST_HARNESS') == 'true')
+def uploadStoreFile = buildSecret('SF_UPLOAD_STORE_FILE')
+def hasUploadKey = uploadStoreFile && file(uploadStoreFile).exists()
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -85,6 +126,11 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        manifestPlaceholders = [mapsApiKey: mapsApiKey]
+        buildConfigField "String", "MAPS_API_KEY", "\"${mapsApiKey}\""
+    }
+    buildFeatures {
+        buildConfig true
     }
     signingConfigs {
         debug {
@@ -93,17 +139,68 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasUploadKey) {
+            release {
+                storeFile file(uploadStoreFile)
+                storePassword buildSecret('SF_UPLOAD_STORE_PASSWORD')
+                keyAlias buildSecret('SF_UPLOAD_KEY_ALIAS')
+                keyPassword buildSecret('SF_UPLOAD_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // No crash reports from development builds.
+            manifestPlaceholders.crashlyticsEnabled = "false"
+            buildConfigField "String", "DEBUG_SERVER_WRITES_ACCOUNT_ID", "\"${debugWritesAccount}\""
+            buildConfigField "boolean", "SF_WHATSAPP_CALL_PROBE", whatsAppCallProbe ? "true" : "false"
+            buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", activityTestHarness ? "true" : "false"
+            buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "false"
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Never the debug key: without the upload key configured (see
+            // SF_UPLOAD_* above) the release build is produced unsigned and
+            // can't be published.
+            signingConfig hasUploadKey ? signingConfigs.release : null
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            manifestPlaceholders.crashlyticsEnabled = "true"
+            // Always empty: the debug write switch can never reach a release.
+            buildConfigField "String", "DEBUG_SERVER_WRITES_ACCOUNT_ID", '""'
+            // Always off: the probe class does not exist in release builds.
+            buildConfigField "boolean", "SF_WHATSAPP_CALL_PROBE", "false"
+            // Always off: the test harness does not exist in release builds.
+            buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", "false"
+            buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "false"
+            // R8 mapping upload needs Firebase access at build time; CI turns
+            // it on with -PSF_UPLOAD_CRASHLYTICS_MAPPING=true.
+            firebaseCrashlytics {
+                mappingFileUploadEnabled = (buildSecret('SF_UPLOAD_CRASHLYTICS_MAPPING') == 'true')
+            }
+        }
+        // Client field-test APK (Round 3): release code (R8, embedded JS,
+        // not debuggable) WITHOUT the debug source set, so the WhatsApp probe
+        // and the synthetic Activity harness are not in the APK at all.
+        // Signed with the debug key (installable side-by-side only with other
+        // debug-key builds; never a store build). Automatic uploads (activity
+        // and session sync, auto-reply push, logout pre-sync) are off; what
+        // the user does explicitly (sign-in, saving zones / schedules /
+        // settings, logout) still reaches the server. No crash reports.
+        //   ./gradlew :app:assembleFieldTest -PSF_MAPS_API_KEY=
+        fieldTest {
+            initWith release
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            manifestPlaceholders.crashlyticsEnabled = "false"
+            buildConfigField "String", "DEBUG_SERVER_WRITES_ACCOUNT_ID", '""'
+            buildConfigField "boolean", "SF_WHATSAPP_CALL_PROBE", "false"
+            buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", "false"
+            buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "true"
+            firebaseCrashlytics {
+                mappingFileUploadEnabled = false
+            }
         }
     }
 }
@@ -119,6 +216,16 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+    implementation 'com.facebook.android:facebook-android-sdk:latest.release'
+
+    // Geofencing + current location for the automation engine. Same version
+    // react-native-maps already pulls in (no upgrade).
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
+    // Version from the Firebase BoM above.
+    implementation 'com.google.firebase:firebase-crashlytics'
+
+    // JVM unit tests for the automation evaluator (test classpath only)
+    testImplementation 'junit:junit:4.13.2'
 }
 
 apply plugin: 'com.google.gms.google-services'

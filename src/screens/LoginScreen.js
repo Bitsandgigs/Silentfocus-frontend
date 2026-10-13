@@ -36,7 +36,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 // Mics Constants
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
-import {height, localize, setAsyncData} from '../function/commonFunctions';
+import {height, localize} from '../function/commonFunctions';
 import {Colors, Constants, Images} from '../utils/theme';
 import {
     validateEmail,
@@ -50,7 +50,10 @@ import {AppContext} from '../utils/context/contextProvider';
 // API
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {showAlert} from '../function/Alert';
+import {showAlert, showApiErrorAlert} from '../function/Alert';
+import {ACCOUNT_SWITCH_BLOCKED, parseAuthResponse, startSession} from '../utils/session';
+import {ACCOUNT_SWITCH_BLOCKED_MESSAGE} from '../utils/outbox';
+import {getAppConfig} from '../utils/appConfig';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import CommonStyle from '../utils/theme/commonStyle';
 import {
@@ -82,7 +85,9 @@ export default function LoginScreen() {
     const [hasErrors, setHasErrors] = useState(false);
     const [isError, setIsError] = useState(false);
     const [value, setValue] = useState('');
-    const [seconds, setSeconds] = useState(60);
+    // Server-side resend cooldown (GET /app-config; default 30 s).
+    const resendCooldown = getAppConfig().otpResendCooldownSeconds;
+    const [seconds, setSeconds] = useState(resendCooldown);
     const isSigninProgress = useRef(false);
     const CELL_COUNT = 4;
 
@@ -167,7 +172,7 @@ export default function LoginScreen() {
         const payload = {
             email: values.email ? values.email : '',
         };
-        setSeconds(60);
+        setSeconds(resendCooldown);
         ResendOtpApiCall(payload);
     };
     const handleVerifyaAndRegister = async () => {
@@ -180,55 +185,48 @@ export default function LoginScreen() {
     };
 
     // API
+    // Saves the session from a login / sign-up OTP / social login response
+    // ({status:'1', result:{user_id, ..., token}}) and enters the app.
+    // Returns false (nothing saved) when the response has no usable session.
+    const enterWithSession = async responseData => {
+        const session = parseAuthResponse(responseData);
+        if (!session) {
+            return false;
+        }
+        try {
+            await startSession(session);
+        } catch (e) {
+            if (e?.code === ACCOUNT_SWITCH_BLOCKED) {
+                // Handled here (not a sign-in failure): stays signed out.
+                showAlert(Constants.commonConstant.appName, ACCOUNT_SWITCH_BLOCKED_MESSAGE);
+                return true;
+            }
+            return false;
+        }
+        updateConstantValue(session.user);
+        setIsLogin(true);
+        return true;
+    };
+
+    const showSignInFailed = response =>
+        showApiErrorAlert(
+            Constants.commonConstant.appName,
+            response?.data?.status === '1' ? {data: null} : response,
+            'Sign in could not be completed. Please try again.',
+        );
+
     const LoginApiCall = async payload => {
         const url = EndPoints.login;
 
-        await APICall('post', payload, url).then(response => {
-            setIsLoading(false);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-
-                if (responseData?.status === '1') {
-                    Constants.commonConstant.appUser = responseData?.result;
-                    Constants.commonConstant.appUserId =
-                        responseData?.result?.user_id;
-
-                    setAsyncData(
-                        Constants.asyncStorageKeys.userData,
-                        responseData?.result,
-                    );
-                    updateConstantValue(responseData?.result);
-
-                    setIsLogin(true);
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('post', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            (await enterWithSession(response?.data))
+        ) {
+            return;
+        }
+        showSignInFailed(response);
     };
 
     const RegisterApiCall = async payload => {
@@ -236,7 +234,6 @@ export default function LoginScreen() {
 
         await APICall('post', payload, url).then(response => {
             setIsLoading(false);
-            console.log('RegisterApiCall', response);
             if (
                 response?.statusCode === Constants.apiStatusCode.success &&
                 response?.data
@@ -252,30 +249,11 @@ export default function LoginScreen() {
                     // updateConstantValue(responseData?.result);
 
                     // setIsLogin(true);
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
@@ -283,53 +261,16 @@ export default function LoginScreen() {
     const VerifyOtpApiCall = async payload => {
         const url = EndPoints.verifyOtp;
 
-        await APICall('post', payload, url).then(response => {
-            setIsLoading(false);
-            console.log('RegisterApiCall', response);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-
-                if (responseData?.status === '1') {
-                    Constants.commonConstant.appUser = responseData?.result;
-                    Constants.commonConstant.appUserId =
-                        responseData?.result?.user_id;
-
-                    setAsyncData(
-                        Constants.asyncStorageKeys.userData,
-                        responseData?.result,
-                    );
-                    updateConstantValue(responseData?.result);
-                    setModalVisible(false);
-                    setIsLogin(true);
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
-                }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
-        });
+        const response = await APICall('post', payload, url);
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            (await enterWithSession(response?.data))
+        ) {
+            setModalVisible(false);
+            return;
+        }
+        showSignInFailed(response);
     };
 
     const ResendOtpApiCall = async payload => {
@@ -347,93 +288,32 @@ export default function LoginScreen() {
                     // navigation.navigate(screens.ResetPasswordScreen, {
                     //     email: payload.email,
                     // });
-                } else if (responseData?.status === '0') {
-                    showAlert(
-                        Constants.commonConstant.appName,
-                        responseData?.message,
-                    );
+                } else {
+                    showApiErrorAlert(Constants.commonConstant.appName, response);
                 }
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
+            } else {
+                showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
     };
 
+    // Response: {status:'1', result:{user_id, username, email, phone_number,
+    // token, token_type, provider, provider_id}}.
     const SocialLoginApiCall = async payload => {
         const url = EndPoints.socialLogin;
 
-        await APICall('post', payload, url, {
+        const response = await APICall('post', payload, url, {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-        }).then(async response => {
-            setIsLoading(false);
-            if (
-                response?.statusCode === Constants.apiStatusCode.success &&
-                response?.data
-            ) {
-                const responseData = response?.data;
-                console.log('SOCIAL_LOGIN_RESPONCE ===>>>', responseData);
-                const apiData = responseData || {};
-
-                const userResult = {
-                    user_id: apiData.id || 0,
-                    username: apiData.name || '',
-                    email: apiData.email || '',
-                    phone_number: apiData.phone_number || '',
-                };
-
-                Constants.commonConstant.appUser = userResult;
-                Constants.commonConstant.appUserId = userResult.user_id;
-                Constants.commonConstant.appToken = apiData.token || '';
-
-                await setAsyncData(
-                    Constants.asyncStorageKeys.userData,
-                    userResult,
-                );
-                await setAsyncData(
-                    Constants.asyncStorageKeys.userToken,
-                    apiData.token || '',
-                );
-
-                updateConstantValue(userResult);
-
-                setIsLogin(true);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.invalidContent
-            ) {
-                const errorData = response?.data;
-                showAlert(Constants.commonConstant.appName, errorData?.detail);
-            } else if (
-                response?.statusCode ===
-                Constants.apiStatusCode.unprocessableContent
-            ) {
-                const errorData = response?.data?.detail[0];
-                showAlert(Constants.commonConstant.appName, errorData?.msg);
-            } else if (
-                response?.statusCode === Constants.apiStatusCode.serverError
-            ) {
-                showAlert(
-                    Constants.commonConstant.appName,
-                    'Internal Server Error',
-                );
-            }
         });
+        setIsLoading(false);
+        if (
+            response?.statusCode === Constants.apiStatusCode.success &&
+            (await enterWithSession(response?.data))
+        ) {
+            return;
+        }
+        showSignInFailed(response);
     };
 
     // Formik and Yup
@@ -492,15 +372,14 @@ export default function LoginScreen() {
     const formik = useFormik({
         initialValues: {
             name: '',
-            email: __DEV__ ? 'payal.bitsandgigs@gmail.com' : '',
-            password: __DEV__ ? 'Payal@123' : '',
+            email: '',
+            password: '',
         },
 
         validateOnBlur: false,
         validateOnChange: hasErrors,
         validateOnMount: false,
         onSubmit: values => {
-            console.log(values);
             if (isLoginData) {
                 const payload = {
                     email: values.email ? values.email : '',
@@ -558,11 +437,9 @@ export default function LoginScreen() {
                             console.log('Error fetching data:', error);
                         } else {
                             // debugLog('userData', userData);
-                            console.log('userData fb login===', userData);
                             if (userData?.email) {
                                 const result =
                                     await AccessToken.getCurrentAccessToken();
-                                console.log('result fb login===', userData);
                                 // SocialConnectApi({
                                 //     token: result?.accessToken,
                                 //     register_type: 'facebook',
@@ -605,7 +482,6 @@ export default function LoginScreen() {
 
             if (hasPlayServices) {
                 const responseData = await GoogleSignin.signIn();
-                console.log('responseData ===>>>', responseData);
 
                 if (responseData.type === 'success') {
                     const payload = {
@@ -615,7 +491,7 @@ export default function LoginScreen() {
                     setIsLoading(true);
                     SocialLoginApiCall(JSON.stringify(payload));
                 } else if (responseData.type === 'cancelled') {
-                    console.log('Login Cancel ======', responseData);
+                    console.log('Google login cancelled');
                 }
             } else {
                 showAlert(localize('SF29'), localize('SF31'), localize('SF30'));
