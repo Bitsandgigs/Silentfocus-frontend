@@ -59,6 +59,26 @@ describe('Check WhatsApp Call Alerts – result wording', () => {
         expect(values({...base, ringing: true, callerIdentified: true, repeatCount: 2}).urgent).toBe('No – call 2 of 3');
     });
 
+    test('WhatsApp silenced by DND: the missed call counts as detected and is explained', () => {
+        const r = describeCallCheck(
+            {...base, ringing: false, silenced: true, missed: true, notificationAccess: true, silentFocusOn: 1,
+                callerIdentified: true, emergencyMatched: true, alertAttempted: true, alertOutcome: 'SENT'},
+            settings,
+        );
+        expect(r.rows.find(x => x.key === 'detected').value).toBe('Yes');
+        expect(r.summary).toMatch(/^WhatsApp didn’t ring because Do Not Disturb was on/);
+        expect(r.summary).toMatch(/alerted you to call back/);
+    });
+
+    test('access granted but listener not connected says so', () => {
+        expect(
+            describeCallCheck({...base, ringing: false, notificationAccess: true, listenerConnected: false, waSeen: false}, settings),
+        ).toMatchObject({action: 'NOTIFICATION_ACCESS'});
+        expect(
+            describeCallCheck({...base, ringing: false, notificationAccess: true, listenerConnected: false, waSeen: false}, settings).summary,
+        ).toMatch(/isn’t receiving notifications/);
+    });
+
     test('no call detected: notification access first, then what was seen', () => {
         expect(describeCallCheck({...base, notificationAccess: false}, settings)).toMatchObject({
             summary: 'No WhatsApp call was detected. Please check notification access.',
@@ -176,6 +196,63 @@ describe('Important WhatsApp Calls screen (#B)', () => {
         tree.unmount();
     });
 
+    // ---- Emergency Call Handling (Option A)
+
+    const modeChecked = (tree, mode) =>
+        tree.root.findAllByProps({testID: `sim-call-mode-${mode}`})[0].props.accessibilityState.checked;
+
+    test('Emergency Call Handling: no saved mode (older install) shows Ring Through DND active', async () => {
+        const tree = await renderScreen(ready); // callSettings without simCallMode
+        const all = texts(tree).join('\n');
+        expect(all).toContain('EMERGENCY CALL HANDLING');
+        expect(all).toContain('Allow emergency and urgent SIM calls to ring while Silent Focus is active.');
+        expect(all).toContain('WhatsApp alerts are handled separately.');
+        expect(all).not.toContain('WhatsApp will ring');
+        expect(modeChecked(tree, 'ring_through_dnd')).toBe(true);
+        expect(modeChecked(tree, 'alert_only')).toBe(false);
+        expect(all).toContain('Their calls ring through silence.');
+        tree.unmount();
+    });
+
+    test('Emergency Call Handling: Alert Only selected, wording follows it; unknown values fall back', async () => {
+        const tree = await renderScreen({...ready, callSettings: {...ready.callSettings, simCallMode: 'alert_only'}});
+        const all = texts(tree).join('\n');
+        expect(modeChecked(tree, 'alert_only')).toBe(true);
+        expect(all).toContain('Their calls trigger a Silent Focus alert.');
+        expect(all).not.toContain('Their calls ring through silence.');
+        tree.unmount();
+        const odd = await renderScreen({...ready, callSettings: {...ready.callSettings, simCallMode: 'ring_loudly'}});
+        expect(modeChecked(odd, 'ring_through_dnd')).toBe(true);
+        odd.unmount();
+    });
+
+    test('Emergency Call Handling: changing mode asks first; only "Change" saves it', async () => {
+        const {Alert} = require('react-native');
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+        native.setCallSettings.mockClear();
+        native.setCallSettings.mockResolvedValue({...ready, callSettings: {...ready.callSettings, simCallMode: 'alert_only'}});
+        const tree = await renderScreen(ready);
+        await act(async () => {
+            tree.root.findAllByProps({testID: 'sim-call-mode-alert_only'})[0].props.onPress();
+        });
+        expect(alertSpy).toHaveBeenCalledTimes(1);
+        const [title, , buttons] = alertSpy.mock.calls[0];
+        expect(title).toBe('Use Alert Only?');
+        expect(native.setCallSettings).not.toHaveBeenCalled(); // nothing saved before confirming
+        await act(async () => {
+            buttons.find(b => b.text === 'Change').onPress();
+        });
+        expect(native.setCallSettings).toHaveBeenCalledWith({simCallMode: 'alert_only'});
+        // Tapping the mode that is already active does nothing.
+        alertSpy.mockClear();
+        await act(async () => {
+            tree.root.findAllByProps({testID: 'sim-call-mode-alert_only'})[0].props.onPress();
+        });
+        expect(alertSpy).not.toHaveBeenCalled();
+        alertSpy.mockRestore();
+        tree.unmount();
+    });
+
     test('Try an Alert shows a plain message', async () => {
         const {Alert} = require('react-native');
         const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -204,13 +281,14 @@ describe('notification text (#C)', () => {
         const ensure = alert.slice(alert.indexOf('fun ensureChannel'), alert.indexOf('private fun desiredChannel'));
         // Every createNotificationChannel call passes the full desired channel, never a bare NotificationChannel.
         expect(ensure).not.toMatch(/createNotificationChannel\(\s*NotificationChannel\(/);
-        expect(ensure).toMatch(/createNotificationChannel\(desiredChannel\(context, existing\.importance, bypass = dndAccess \|\| existing\.canBypassDnd\(\)\)\)/);
+        expect(ensure).toMatch(/createNotificationChannel\(desiredChannel\(context, existing\.importance, bypass = dndAccess \|\| existing\.canBypassDnd\(\), spec\)\)/);
         expect(ensure).toMatch(/dndAccess && !existing\.canBypassDnd\(\)/);
     });
 
     test('real alerts: the title says it all; lock screen has no name', () => {
-        expect(emergency).toContain('Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."');
-        expect(emergency).toContain('Kind.URGENT -> "Urgent call on $app" to "Someone called $repeatCount times."');
+        expect(emergency).toContain('kind == Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."');
+        expect(emergency).toContain('else -> "Urgent call on $app" to "Someone called $repeatCount times."');
+        expect(emergency).toContain('"Missed emergency call on $app" to "Your emergency contact just called. Call them back."');
         expect(alert).toMatch(/setPublicVersion\(publicVersion\)/);
         expect(alert).toMatch(/BigTextStyle\(\)\.bigText\(text\)/);
     });

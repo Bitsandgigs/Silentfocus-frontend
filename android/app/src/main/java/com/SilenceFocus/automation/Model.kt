@@ -41,11 +41,13 @@ enum class TriggerReason {
 
 /**
  * Where a silence decision comes from. Higher priority wins when several
- * are active: Manual > Location zone > Schedule / Calendar > Normal.
+ * are active: Manual > Silent Zone / public place > Schedule / Calendar > Normal.
  */
 enum class RuleSource(val priority: Int) {
     MANUAL(400),
     ZONE(300),
+    /** Location Mode: a library or place of worship found nearby (PublicPlaces). */
+    PLACE(300),
     CALENDAR(200),
     SCHEDULE(200),
 }
@@ -131,6 +133,9 @@ data class Decision(
     val suppressedRules: List<ActiveRule>,
     val override: ManualOverride,
     val nextBoundary: Boundary?,
+    /** The next time a schedule or calendar window starts (what Home shows as
+     *  "Next automatic silence"); unlike [nextBoundary] never an END. */
+    val nextStart: Boundary? = null,
 )
 
 /**
@@ -142,6 +147,9 @@ interface SilenceRuleProvider {
 
     /** The first time strictly after [nowMillis] when a rule starts or ends. */
     fun nextBoundaryAfter(nowMillis: Long, tz: java.util.TimeZone): Boundary?
+
+    /** The first time strictly after [nowMillis] when a rule window starts. */
+    fun nextStartAfter(nowMillis: Long, tz: java.util.TimeZone): Boundary? = null
 }
 
 /**
@@ -209,11 +217,29 @@ data class CalendarEvent(
     val allDay: Boolean,
 )
 
+/**
+ * A public place (library / place of worship) near the device, from the
+ * Places API. [id] is the Places id; only id, name and centre are kept.
+ */
+data class PublicPlace(
+    val id: String,
+    val name: String?,
+    val latitude: Double,
+    val longitude: Double,
+) {
+    val isValid: Boolean
+        get() = id.isNotEmpty() && latitude in -90.0..90.0 && longitude in -180.0..180.0 &&
+            !(latitude == 0.0 && longitude == 0.0)
+}
+
 /** User automation settings pushed from JS (backend settings + Control Center). */
 data class AutomationSettings(
+    /** Gates the user's own Silent Zones (name kept for stored settings). */
     val locationEnabled: Boolean = false,
     val calendarEnabled: Boolean = false,
     val calendarBeforeMinutes: Int = 0,
     val calendarAfterMinutes: Int = 0,
     val ignoreAllDayEvents: Boolean = true,
+    /** Location Mode: silence at public places (PublicPlaces). */
+    val publicPlacesEnabled: Boolean = false,
 )

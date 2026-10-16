@@ -12,10 +12,12 @@ import android.net.Uri
 import android.os.Build
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.annotation.SuppressLint
 import com.SilenceFocus.comms.AutoReplySettings
 import com.SilenceFocus.comms.CallSettings
 import com.SilenceFocus.comms.CommsStore
+import com.SilenceFocus.comms.SimCallMode
 import com.SilenceFocus.comms.EmergencyCallAlert
 import com.SilenceFocus.comms.WhatsAppCallCheck
 import com.SilenceFocus.comms.PhoneNumbers
@@ -178,6 +180,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
                 calendarBeforeMinutes = int("calendarBeforeMinutes"),
                 calendarAfterMinutes = int("calendarAfterMinutes"),
                 ignoreAllDayEvents = bool("ignoreAllDayEvents", true),
+                publicPlacesEnabled = bool("publicPlacesEnabled", false),
             ),
         )
     }
@@ -731,7 +734,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getCommsState(promise: Promise) = run(promise) { commsState() }
 
-    /** {emergencyEnabled, urgentEnabled, urgentThreshold, urgentWindowMinutes, urgentCooldownMinutes} */
+    /** {emergencyEnabled, urgentEnabled, urgentThreshold, urgentWindowMinutes, urgentCooldownMinutes, ..., simCallMode} */
     @ReactMethod
     fun setCallSettings(settings: ReadableMap, promise: Promise) = run(promise) {
         val store = CommsStore(reactContext)
@@ -744,6 +747,11 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
             urgentCooldownMinutes = settings.int("urgentCooldownMinutes", cur.urgentCooldownMinutes),
             whatsAppAlertsEnabled = settings.bool("whatsAppAlertsEnabled", cur.whatsAppAlertsEnabled),
             whatsAppNameMatch = settings.bool("whatsAppNameMatch", cur.whatsAppNameMatch),
+            // Only a known id changes the mode; an unknown value keeps the current one.
+            simCallMode = settings.takeIf { it.hasKey("simCallMode") && !it.isNull("simCallMode") }
+                ?.getString("simCallMode")
+                ?.let { id -> SimCallMode.values().firstOrNull { it.id == id } }
+                ?: cur.simCallMode,
         )
         commsState()
     }
@@ -791,6 +799,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
             put("remainingMs", if (r?.running(now) == true) r.endsAt - now else 0L)
             put("silentFocusOnNow", owned)
             put("notificationAccess", hasListenerAccess())
+            put("listenerConnected", SilentFocusNotificationListener.connected != null)
             put("soundReady", ready.sound.name)
             put("ringerMode", ready.ringerMode)
             if (r != null) {
@@ -798,6 +807,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
                 put("callLikeSeen", r.callLikeSeen)
                 put("ringing", r.ringing)
                 put("missed", r.missed)
+                put("silenced", r.silenced)
                 put("calls", r.calls)
                 put("app", r.app)
                 put("silentFocusOn", r.silentFocusOn)
@@ -932,11 +942,19 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
 
     private fun hasListenerAccess(): Boolean {
         val component = ComponentName(reactContext, SilentFocusNotificationListener::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            return nm().isNotificationListenerAccessGranted(component)
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            nm().isNotificationListenerAccessGranted(component)
+        } else {
+            val enabled = Settings.Secure.getString(reactContext.contentResolver, "enabled_notification_listeners").orEmpty()
+            enabled.split(':').any { ComponentName.unflattenFromString(it) == component }
         }
-        val enabled = Settings.Secure.getString(reactContext.contentResolver, "enabled_notification_listeners").orEmpty()
-        return enabled.split(':').any { ComponentName.unflattenFromString(it) == component }
+        // Access granted but the listener isn't bound (Samsung after an app
+        // update or battery kill): nothing would see WhatsApp calls or
+        // messages until Android rebinds it, so ask for that now.
+        if (granted && SilentFocusNotificationListener.connected == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            runCatching { NotificationListenerService.requestRebind(component) }
+        }
+        return granted
     }
 
     private fun isScreeningRoleHeld(): Boolean {
@@ -987,6 +1005,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
                 put("urgentCooldownMinutes", call.urgentCooldownMinutes)
                 put("whatsAppAlertsEnabled", call.whatsAppAlertsEnabled)
                 put("whatsAppNameMatch", call.whatsAppNameMatch)
+                put("simCallMode", call.simCallMode.id)
             })
             val alert = EmergencyCallAlert.status(reactContext)
             put("whatsAppAlert", JSONObject().apply {

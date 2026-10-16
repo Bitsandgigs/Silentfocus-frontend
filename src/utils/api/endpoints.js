@@ -22,6 +22,8 @@ const EndPoints = {
     // Authenticated; deletes/anonymises the signed-in account and revokes
     // all of its tokens.
     deleteAccount: 'account',
+    // Authenticated; stores feedback from the Accounts screen.
+    feedback: 'feedback',
     EditScheduleTimerData: 'scheduleTimerData/{schedule_id}',
     setControlModes: 'control/modes',
     getControlModes: 'control/modes',

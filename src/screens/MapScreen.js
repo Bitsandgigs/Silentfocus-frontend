@@ -41,6 +41,7 @@ import {
 import {fetchAllSilentZones} from '../utils/automationSync';
 import {getCurrentLocation, pushZonesToEngine} from '../utils/silentFocusEngine';
 import {MAPS_API_KEY} from '../utils/buildConfig';
+import {PLACE_DETAILS_FIELDS, PLACES_NEW_REQUEST_URL, placeFromDetails} from '../utils/placeSearch';
 import {getAppConfig} from '../utils/appConfig';
 import {resolveLearnedPlace} from '../utils/learning';
 import {
@@ -231,8 +232,8 @@ const MapScreen = () => {
     };
 
     const handlePlaceSelect = (data, details) => {
-        const loc = details?.geometry?.location;
-        if (!loc) {
+        const place = placeFromDetails(data, details);
+        if (!place) {
             showAlert(
                 Constants.commonConstant.appName,
                 'Location details not found for that place.',
@@ -240,13 +241,9 @@ const MapScreen = () => {
             return;
         }
         setFixInfo(null);
-        setPoint(
-            loc.lat,
-            loc.lng,
-            details?.formatted_address || data?.description || '',
-        );
-        if (!form?.name && details?.name) {
-            updateForm({name: details.name});
+        setPoint(place.latitude, place.longitude, place.address);
+        if (!form?.name && place.name) {
+            updateForm({name: place.name});
         }
     };
 
@@ -422,6 +419,9 @@ const MapScreen = () => {
             <GooglePlacesAutocomplete
                 placeholder="Search places"
                 fetchDetails={true}
+                isNewPlacesAPI={true}
+                requestUrl={PLACES_NEW_REQUEST_URL}
+                fields={PLACE_DETAILS_FIELDS}
                 onPress={(data, details = null) =>
                     handlePlaceSelect(data, details)
                 }

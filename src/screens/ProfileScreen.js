@@ -37,6 +37,7 @@ import {prepareUserLogout} from '../utils/serverSync';
 import {syncDeviceCalendar} from '../utils/silentFocusEngine';
 import {requestCalendarPermission} from '../utils/locationPermissions';
 import PermissionHub from '../componentes/PermissionHub';
+import FeedbackForm from '../componentes/FeedbackForm';
 import {clearLearnedNow, confirmClearActivity} from '../utils/privacyActions';
 import {getLearningState} from '../utils/learning';
 import {useIsFocused} from '@react-navigation/native';
@@ -556,6 +557,11 @@ const ProfileScreen = () => {
                             textColor={text}
                         />
                     </Pressable>
+                </Section>
+
+                {/* Feedback (client request, Round 9) */}
+                <Section title="Feedback" cardColor={card}>
+                    <FeedbackForm />
                 </Section>
 
                 {/* Legal */}

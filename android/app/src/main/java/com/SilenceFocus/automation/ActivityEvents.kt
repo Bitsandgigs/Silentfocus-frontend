@@ -18,6 +18,8 @@ object ActivityEvents {
     const val SILENCE_ENDED = "SILENCE_ENDED"
     const val ZONE_ENTER = "ZONE_ENTER"
     const val ZONE_EXIT = "ZONE_EXIT"
+    const val PLACE_ENTER = "PLACE_ENTER"
+    const val PLACE_EXIT = "PLACE_EXIT"
     const val CALENDAR_STARTED = "CALENDAR_STARTED"
     const val CALENDAR_ENDED = "CALENDAR_ENDED"
     const val SCHEDULE_STARTED = "SCHEDULE_STARTED"
@@ -90,6 +92,7 @@ object ActivityEvents {
 
     fun ruleStarted(source: RuleSource): String = when (source) {
         RuleSource.ZONE -> ZONE_ENTER
+        RuleSource.PLACE -> PLACE_ENTER
         RuleSource.CALENDAR -> CALENDAR_STARTED
         RuleSource.SCHEDULE -> SCHEDULE_STARTED
         RuleSource.MANUAL -> SILENCE_STARTED
@@ -97,6 +100,7 @@ object ActivityEvents {
 
     fun ruleEnded(source: RuleSource): String = when (source) {
         RuleSource.ZONE -> ZONE_EXIT
+        RuleSource.PLACE -> PLACE_EXIT
         RuleSource.CALENDAR -> CALENDAR_ENDED
         RuleSource.SCHEDULE -> SCHEDULE_ENDED
         RuleSource.MANUAL -> SILENCE_ENDED

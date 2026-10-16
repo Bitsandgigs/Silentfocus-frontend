@@ -81,7 +81,7 @@ test('manual OFF during a schedule shows it paused', () => {
     const s = describeEngineState(
         {
             ...base,
-            suppressedRules: [{ruleId: 'a'}],
+            suppressedRules: [{ruleId: 'a', source: 'SCHEDULE'}],
             manualOverride: {mode: 'FORCE_OFF', until: today(17)},
         },
         now,
@@ -108,4 +108,54 @@ test('the same weekday next week includes the date', () => {
             now,
         ).next,
     ).toBe('Next automatic silence Thu 9:00 AM');
+});
+
+test('paused text names what was actually paused', () => {
+    const d = rules =>
+        describeEngineState(
+            {...base, suppressedRules: rules, manualOverride: {mode: 'FORCE_OFF', until: null}},
+            now,
+        ).detail;
+    expect(d([{ruleId: 'z', source: 'ZONE'}])).toBe('Silent Zone paused until you leave it');
+    expect(
+        describeEngineState(
+            {
+                ...base,
+                suppressedRules: [{ruleId: 'c', source: 'CALENDAR'}],
+                manualOverride: {mode: 'FORCE_OFF', until: today(17)},
+            },
+            now,
+        ).detail,
+    ).toBe('Calendar event paused until 5:00 PM');
+    expect(d([{ruleId: 'a', source: 'SCHEDULE'}, {ruleId: 'z', source: 'ZONE'}])).toBe(
+        'Automatic silence paused',
+    );
+});
+
+test('next silence is shown even when the next boundary is an END', () => {
+    const s = describeEngineState(
+        {
+            ...base,
+            scheduleCount: 1,
+            suppressedRules: [{ruleId: 'a', source: 'SCHEDULE'}],
+            manualOverride: {mode: 'FORCE_OFF', until: today(17)},
+            nextTransition: {at: today(17), kind: 'END'},
+            nextSilenceStart: {at: today(18), source: 'SCHEDULE'},
+        },
+        now,
+    );
+    expect(s.detail).toBe('Schedule paused until 5:00 PM');
+    expect(s.next).toBe('Next automatic silence 6:00 PM');
+});
+
+test('no next silence while silent or when none is coming', () => {
+    expect(
+        describeEngineState({...base, nextTransition: {at: today(17), kind: 'END'}}, now).next,
+    ).toBeNull();
+    expect(
+        describeEngineState(
+            {...base, silentActive: true, source: 'MANUAL', nextSilenceStart: {at: today(18)}},
+            now,
+        ).next,
+    ).toBeNull();
 });

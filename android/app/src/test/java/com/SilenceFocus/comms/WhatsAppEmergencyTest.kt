@@ -267,4 +267,13 @@ class WhatsAppEmergencyTest {
     }
 
     private fun Match(c: EmergencyContact, m: Method) = E.Match(c, m)
+
+    @Test fun `missed-call alert text says call back and never names the caller`() {
+        val (t, x) = E.privateText(Kind.EMERGENCY, "WhatsApp", "Asha", 0, missed = true)
+        assertEquals("Missed emergency call on WhatsApp", t)
+        assertFalse(x.contains("Asha"))
+        val (u, y) = E.publicText(Kind.URGENT, "WhatsApp", missed = true)
+        assertEquals("Urgent missed calls on WhatsApp", u)
+        assertEquals("Someone called repeatedly.", y)
+    }
 }

@@ -20,7 +20,8 @@ data class EmergencyContact(
  *  - calls from the same caller are counted only while Silent Focus is
  *    silencing the device, only incoming, only with a usable number;
  *  - the call that brings the count within [urgentWindowMinutes] to
- *    [urgentThreshold] is urgent and rings (default: the 3rd call in 15 min);
+ *    [urgentThreshold] is urgent (default: the 2nd call in 15 min; it was
+ *    the 3rd before 2026-10-14, see CommsStore's one-time migration);
  *  - after an urgent breakthrough that caller's count is cleared and their
  *    calls are neither counted nor allowed for [urgentCooldownMinutes], so a
  *    4th/5th call doesn't retrigger; after the cooldown counting starts again.
@@ -35,6 +36,8 @@ data class CallSettings(
     val whatsAppAlertsEnabled: Boolean = true,
     /** Opt-in: match a WhatsApp caller to an emergency contact by name when no number is exposed. */
     val whatsAppNameMatch: Boolean = false,
+    /** What a qualifying SIM call does while Silent Focus is silencing (WhatsApp is unaffected). */
+    val simCallMode: SimCallMode = SimCallMode.DEFAULT,
 ) {
     fun sanitized() = copy(
         urgentThreshold = urgentThreshold.coerceIn(2, 10),
@@ -43,10 +46,41 @@ data class CallSettings(
     )
 
     companion object {
-        const val DEFAULT_THRESHOLD = 3
+        const val DEFAULT_THRESHOLD = 2
+        /** The default before 2026-10-14; see [migratedThreshold]. */
+        const val LEGACY_DEFAULT_THRESHOLD = 3
         const val DEFAULT_WINDOW_MINUTES = 15
         const val DEFAULT_COOLDOWN_MINUTES = 15
         const val MAX_WINDOW_MINUTES = 60
+
+        /**
+         * One-time move of a stored threshold to the new default. No screen or
+         * sync ever let a user pick the threshold (the app only sends on/off
+         * switches; the native setter stores the whole object), so a stored 3
+         * is always the old default echoed back, never a choice. Any other
+         * stored value is kept. Null: nothing stored (the default applies).
+         */
+        fun migratedThreshold(stored: Int?): Int? =
+            if (stored == LEGACY_DEFAULT_THRESHOLD) DEFAULT_THRESHOLD else stored
+    }
+}
+
+/**
+ * How a qualifying SIM call (emergency contact / urgent repeat caller) is
+ * handled while Silent Focus is silencing. Stored by [id]; anything unknown
+ * reads as [DEFAULT]. Existing and new installs keep [RING_THROUGH_DND]
+ * (the behaviour before this setting existed) until the user changes it.
+ */
+enum class SimCallMode(val id: String) {
+    /** Pause Silent Focus's Do Not Disturb for the call and play the ringtone (unchanged behaviour). */
+    RING_THROUGH_DND("ring_through_dnd"),
+    /** Keep Do Not Disturb on; post Silent Focus's own repeating alert instead. */
+    ALERT_ONLY("alert_only"),
+    ;
+
+    companion object {
+        val DEFAULT = RING_THROUGH_DND
+        fun fromId(id: String?): SimCallMode = values().firstOrNull { it.id == id } ?: DEFAULT
     }
 }
 

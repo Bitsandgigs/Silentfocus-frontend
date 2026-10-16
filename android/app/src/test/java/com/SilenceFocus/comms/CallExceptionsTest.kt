@@ -123,7 +123,8 @@ class UrgentRepeatCallerTest {
     private val caller = "+919812345678"
     private val t0 = 1_000_000_000L
     private val min = 60_000L
-    private fun decider(settings: CallSettings = CallSettings(), contacts: List<EmergencyContact> = emptyList()) =
+    /** These cases exercise the rule's mechanics with 3 calls (the default is 2 since 2026-10-14; see SimCallModeTest). */
+    private fun decider(settings: CallSettings = CallSettings(urgentThreshold = 3), contacts: List<EmergencyContact> = emptyList()) =
         CallDecider(contacts, settings, "salt")
 
     /** Places calls at the given minute offsets; returns outcomes. */

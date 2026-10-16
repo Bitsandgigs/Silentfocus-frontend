@@ -229,4 +229,32 @@ class AutomationEvaluatorTest {
         assertEquals(at(8, 9, tz = newYork, month = Calendar.MARCH), next?.atMillis)
         assertTrue(decide(at(8, 9, 30, tz = newYork, month = Calendar.MARCH), r, tz = newYork).silent)
     }
+
+    // Home's "Next automatic silence": the next window START, even while
+    // the next boundary is the END of a paused/running window.
+    @Test
+    fun nextStartSkipsEndOfPausedWindow() {
+        val r = rule("a", "09:00", "17:00", weekdays)
+        val off = AutomationEvaluator(listOf(ScheduleRuleProvider(listOf(r)))).manualOffOverride(at(28, 10), kolkata)
+        val d = decide(at(28, 10), r, override = off)
+        assertFalse(d.silent)
+        assertEquals(BoundaryKind.END, d.nextBoundary?.kind)
+        assertEquals(Boundary(at(29, 9), BoundaryKind.START), d.nextStart)
+        assertEquals(RuleSource.SCHEDULE, d.nextStart?.source)
+    }
+
+    @Test
+    fun nextStartIsEarliestAcrossRulesAndNullWithoutRules() {
+        val d = decide(at(28, 10), rule("a", "09:00", "17:00", weekdays), rule("b", "18:30", "19:00", everyDay))
+        assertEquals(Boundary(at(28, 18, 30), BoundaryKind.START), d.nextStart)
+        assertNull(decide(at(28, 10)).nextStart)
+        assertNull(decide(at(28, 10), rule("c", "09:00", "17:00", weekdays, enabled = false)).nextStart)
+    }
+
+    @Test
+    fun nextStartFindsAnOnlyWeeklyRuleNextWeek() {
+        // Monday-only rule, evaluated Monday after it ended: next Monday.
+        val d = decide(at(28, 18), rule("a", "09:00", "17:00", setOf(1)))
+        assertEquals(Boundary(at(5, 9, month = Calendar.OCTOBER), BoundaryKind.START), d.nextStart)
+    }
 }

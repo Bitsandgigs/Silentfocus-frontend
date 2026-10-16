@@ -33,7 +33,25 @@ describe('buildAutomationSettings', () => {
             calendarBeforeMinutes: 10,
             calendarAfterMinutes: 5,
             ignoreAllDayEvents: true,
+            publicPlacesEnabled: true,
         });
+    });
+
+    test('Location Mode alone drives public places', () => {
+        const on = buildAutomationSettings({
+            controlModes: {locationMode: true, customMode: false, customModeConfirmed: true},
+            settings,
+            calendarConnected: false,
+        });
+        expect(on.publicPlacesEnabled).toBe(true);
+        expect(on.locationEnabled).toBe(false);
+        const off = buildAutomationSettings({
+            controlModes: {locationMode: '0', customMode: true, customModeConfirmed: true},
+            settings,
+            calendarConnected: false,
+        });
+        expect(off.publicPlacesEnabled).toBe(false);
+        expect(off.locationEnabled).toBe(true);
     });
 
     test('calendar automation needs a connected calendar', () => {

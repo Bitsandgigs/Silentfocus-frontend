@@ -20,6 +20,8 @@ import {ACTION_BUTTON_BG, linkColor} from '../utils/theme/controlColors';
 import {openDndAccessSettings} from '../utils/silentFocusEngine';
 import {
     DEFAULT_COMMS_STATE,
+    SIM_CALL_MODES,
+    SIM_CALL_MODE_OPTIONS,
     callExceptionBlockers,
     describeUrgentRule,
     getCommsState,
@@ -114,6 +116,25 @@ const EmergencyContactsScreen = () => {
         } catch (e) {
             refresh();
         }
+    };
+
+    const alertOnly = cs.simCallMode === SIM_CALL_MODES.ALERT_ONLY;
+
+    // Emergency Call Handling: confirmed, because it changes what the next
+    // emergency or urgent SIM call does.
+    const onSelectSimCallMode = mode => {
+        if (mode === cs.simCallMode) return;
+        const toAlert = mode === SIM_CALL_MODES.ALERT_ONLY;
+        Alert.alert(
+            toAlert ? 'Use Alert Only?' : 'Use Ring Through DND?',
+            toAlert
+                ? 'Emergency and urgent SIM calls will no longer ring through Silent Focus. Silent Focus stays on and plays its own alert for up to 30 seconds instead. Answer from your phone’s call screen.'
+                : 'Emergency and urgent SIM calls will ring while Silent Focus is on, as before.',
+            [
+                {text: 'Cancel', style: 'cancel'},
+                {text: 'Change', onPress: () => updateCall({simCallMode: mode})},
+            ],
+        );
     };
 
     const confirmScreeningRole = () => {
@@ -229,8 +250,9 @@ const EmergencyContactsScreen = () => {
                 {loaded === true ? (
                 <>
                 <Text style={[styles.intro, {color: muted}]}>
-                    Calls from these people ring even while Silent Focus is on. Silent Focus stays on and silence
-                    returns after the call.
+                    {alertOnly
+                        ? 'Calls from these people trigger a Silent Focus alert while Silent Focus is on. Silent Focus stays on throughout.'
+                        : 'Calls from these people ring even while Silent Focus is on. Silent Focus stays on and silence returns after the call.'}
                 </Text>
 
                 {blockers.map(key => {
@@ -254,7 +276,9 @@ const EmergencyContactsScreen = () => {
                 <View style={[styles.row, {backgroundColor: card}]}>
                     <View style={styles.flex}>
                         <Text style={[styles.rowTitle, {color: text}]}>Allow emergency contacts</Text>
-                        <Text style={[styles.rowBody, {color: muted}]}>Their calls ring through silence.</Text>
+                        <Text style={[styles.rowBody, {color: muted}]}>
+                            {alertOnly ? 'Their calls trigger a Silent Focus alert.' : 'Their calls ring through silence.'}
+                        </Text>
                     </View>
                     <Switch
                         value={cs.emergencyEnabled}
@@ -308,8 +332,42 @@ const EmergencyContactsScreen = () => {
                     />
                 </View>
                 <Text style={[styles.footnote, {color: muted}]}>
-                    After an urgent call rings, further calls from that number stay silenced for{' '}
+                    After an urgent call, further calls from that number stay silenced for{' '}
                     {cs.urgentCooldownMinutes} minutes. Private or hidden numbers are never counted.
+                </Text>
+
+                <Text style={[styles.section, {color: text}]} accessibilityRole="header">
+                    EMERGENCY CALL HANDLING
+                </Text>
+                <View accessibilityRole="radiogroup">
+                    {SIM_CALL_MODE_OPTIONS.map(o => {
+                        const selected = cs.simCallMode === o.mode;
+                        return (
+                            <TouchableOpacity
+                                key={o.mode}
+                                testID={`sim-call-mode-${o.mode}`}
+                                onPress={() => onSelectSimCallMode(o.mode)}
+                                style={[styles.row, {backgroundColor: card}, selected && styles.rowSelected]}
+                                accessibilityRole="radio"
+                                accessibilityState={{checked: selected}}
+                                accessibilityLabel={`${o.title}. ${o.body}`}>
+                                <View style={[styles.radio, selected && styles.radioOn]}>
+                                    {selected ? <View style={styles.radioDot} /> : null}
+                                </View>
+                                <View style={styles.flex}>
+                                    <Text style={[styles.rowTitle, {color: text}]}>
+                                        {o.title}
+                                        {selected ? '  · Active' : ''}
+                                    </Text>
+                                    <Text style={[styles.rowBody, {color: muted}]}>{o.body}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+                <Text style={[styles.footnote, {color: muted}]}>
+                    Ring Through DND lets qualifying SIM calls ring. Alert Only keeps Silent Focus active and uses a
+                    separate emergency notification. WhatsApp alerts are handled separately.
                 </Text>
 
                 {/* Round 4 (#B): plain-language "Important WhatsApp Calls". */}
@@ -490,6 +548,19 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     rowTitle: {fontSize: 15, fontWeight: '600'},
+    rowSelected: {borderWidth: 1.5, borderColor: ORANGE},
+    radio: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 2,
+        borderColor: '#888',
+        marginRight: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    radioOn: {borderColor: ORANGE},
+    radioDot: {width: 10, height: 10, borderRadius: 5, backgroundColor: ACTION_BUTTON_BG},
     rowBody: {fontSize: 13, marginTop: 2, lineHeight: 18},
     section: {fontSize: 14, fontWeight: '700', marginTop: 18, marginBottom: 10},
     removeButton: {paddingVertical: 8, paddingHorizontal: 10, minHeight: 44, justifyContent: 'center'},

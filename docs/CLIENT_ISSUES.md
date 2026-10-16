@@ -1338,3 +1338,59 @@ New: `comms/WhatsAppCallCheck.kt` (5 min, user-started, yes/no facts + structura
 Tests: Jest 472/472 (33 suites); native debug 324, release 298, fieldTest 298 (0 failures); ESLint 0 errors. Emulator: SF_Round3_Fresh (API 36, signed out, harness debug build + local `com.whatsapp`/`com.whatsapp.w4b` notification fixtures, removed afterwards) and Pixel_8 (user 3, fieldTest UI only; outbox/history byte-identical before/after; harness debug build reinstalled).
 
 APK: `android/app/build/outputs/client-test/SilentFocus-Round4-Final.apk` = `~/Desktop/SilentFocus-Round4-Final.apk`, 57,738,346 B, SHA-256 `5bfba40c228ed06368fc8c35e1728ff27b68b62fef6fce46041acb9254dda4c5`, fieldTest, debug key v2 (SHA-1 5e8f…f625). Guide: `~/Desktop/SilentFocus-Round4-Test-Guide.md`.
+
+## Round 5 (2026-10-13) – live Samsung session: next scheduled silence, paused label, WhatsApp alerts
+
+| # | Issue | Status | Fix |
+|---|---|---|---|
+| R5-1 | "Doesn't tell me when my next scheduled mute is" | FIXED (unit tests) | Home showed "Next automatic silence" only when the engine's very next boundary was a START; while a window was paused/running (next boundary = its END) the line vanished. Engine now exports `nextSilenceStart` (earliest schedule/calendar window start, `SilenceRuleProvider.nextStartAfter`); Home uses it (falls back to `nextTransition` START). Not a revert: the JS text is identical in Round 3/3-WA/4 bundles. |
+| R5-2 | "Schedule paused" shown with no schedules | FIXED | Paused text now names what was paused: Schedule / Calendar event / "Silent Zone paused until you leave it" / "Automatic silence paused" (mixed). |
+| R5-3 | WhatsApp emergency/urgent calls not alerting on Samsung (cellular OK) | HARDENED – root cause still unconfirmed | (a) Silent Focus DND mode now sets `allowPriorityChannels(true)` on API 35+ (left unset, One UI can resolve it to "blocked", silencing our bypass-DND alert channel); existing rules updated once. (b) Notification access granted but listener unbound → `requestRebind`; the check reports `listenerConnected` and says so. |
+
+Session notes: client screen-shared via Meet, so One UI showed WhatsApp's redacted/public notification ("WhatsApp · Incoming voice call") – not evidence of what the listener receives. "Check WhatsApp Call Alerts" result still needed with screen share off.
+
+Tests: Jest 477/477; native debug 329, release 303, fieldTest 303 (0 failures); ESLint 0 errors.
+
+Emulator (SF_Round3_Fresh, API 36, signed out, harness debug build of this code, writes off, local `com.whatsapp` fixture posting real notifications through the real listener; fixture uninstalled, test state reset afterwards):
+- Silent Focus zen rule: `allowChannels=priority`, zen_mode=IMPORTANT_INTERRUPTIONS.
+- Emergency contact, CallStyle + Person key JID → EMERGENCY / NUMBER / SENT; alert `mIntercept=false`, SystemUI started the alert sound (MediaPlayer) under DND. Also PASS for heads-up (Answer/Decline, people list) + JID and full-screen + `tel:` URI.
+- Urgent: non-emergency caller ×4 → calls 1–2 no alert, call 3 URGENT SENT, call 4 held by cooldown.
+- Name-only caller → no match, check reports `nameWouldMatch` ("Recognise by name" suggestion) – by design.
+- Observed: on API 36 Silent Focus's mode sets the external ringer to SILENT (all ringer sounds muted), yet the bypass channel still sounds; alerts fired seconds apart were posted with FLAG_SILENT by the system (test artefact – one alert per call in real use).
+APK: `android/app/build/outputs/client-test/SilentFocus-Round5.apk`, 57,755,890 B, SHA-256 `76010779f8d47a66a3fd204ada04edc66155473bdc7923a3f2b15b2da650e605`, fieldTest, debug key.
+
+## Round 6 (2026-10-13) – WhatsApp silenced by DND (missed call only)
+
+**Device finding (owner's phone, Round 5 APK):** the check saw only `cat=missed_call imp=2 ch=silent_notifications_3` – WhatsApp posted no recognised ringing notification while Silent Focus's DND was on (it marks the call missed itself), so there was nothing to alert on.
+
+**Fix:**
+- A WhatsApp missed-call notification with no ringing call notification in the previous 3 min (`SILENCED_WINDOW_MS`) is a *silenced* call: emergency matching + urgent repeat rule run on it; alert "Missed emergency call on WhatsApp – call them back" / "Urgent missed calls on WhatsApp" (no 45 s timeout). A missed call after a ringing one is never alerted twice. A re-posted missed-call notification with a later `when` counts as a further call ("2 missed calls"); `Episode.stamp` persisted.
+- Check: silenced calls count as detected (`silenced` field, explained in the summary); support details keep a `call` notification's shape over a later missed-call one.
+- Check "Sound settings": uses the ringer captured before Silent Focus turned on (Android 15+ reports Silent while Silent Focus's mode is on).
+- Activity: "Emergency contact · missed WhatsApp call" for silenced emergency rows.
+
+Tests: Jest 478/478; native debug 334, release 308, fieldTest 308 (0 failures); ESLint 0 errors.
+Emulator (SF_Round3_Fresh, API 36, real listener + `com.whatsapp` fixture, reset/uninstalled after): missed-only call from emergency contact → MISSED EMERGENCY SENT (NUMBER); same missed notification re-posted ×3 from another caller → 3rd URGENT SENT; ringing call then missed → no second alert.
+APK: `android/app/build/outputs/client-test/SilentFocus-Round6.apk` = `~/Desktop/SilentFocus-Round6.apk`, 57,756,262 B, SHA-256 `ed84028743ee04108cacd0b8d406cc35c2a63f155d47cf186cd6ff99f426d69a`, fieldTest, debug key.
+
+## Round 7 (2026-10-13) – Auto Reply "Save replies"
+
+- Cause: saving worked, but the only feedback was the button greying out (looked broken); and an account sync finishing while the user typed reset the fields and the button (edits lost).
+- Fix (`AutoReplyScreen.js`): "Saving…" → "Saved ✓" + "Replies saved on this phone."; a sync no longer resets unsaved edits (`dirtyRef`).
+- Pixel_8 emulator (API 36, test user 3, writes-off debug build + Metro; app data backed up first, test state restored, outbox unchanged): zone reply edited → Save → stored natively, survives reopen + sync; Auto reply ON + Silent Focus ON → `adb emu sms send` answered via Google Messages inline reply with the saved default reply (<1 s); default reply changed + saved → next sender got the new text. Home showed "Next automatic silence Mon 19 Oct 8:00 AM" (R5-1 on device).
+- WhatsApp emergency on the owner's phone: still failing per owner; Round 6/7 check result needed (which APK was tested is unconfirmed).
+- APK: `~/Desktop/SilentFocus-Round7.apk` (= client-test/SilentFocus-Round7.apk), 57,756,662 B, SHA-256 `48bb7d5c08641bfd047f6a0955fb6dcc30810020a71922ead0434c48305ee2ee`, fieldTest. Jest 478/478.
+
+## Round 8 (2026-10-14) – Emergency Call Handling (Option A) + urgent calls 3 → 2
+
+**Status: implemented, emulator-verified – REAL SAMSUNG VERIFICATION PENDING.**
+
+- Setting `CallSettings.simCallMode` (`SimCallMode`: `ring_through_dnd` default / `alert_only`), local only (SharedPreferences `sim_call_mode`; call settings are never server-synced). Missing/unknown → Ring Through DND. Cleared on logout with the other call settings.
+- Ring Through DND: unchanged (DND pause ≤ 90 s, looping ringtone ≤ 60 s, cleanup on OFFHOOK/IDLE).
+- Alert Only (`CallBreakthroughs.onCall` → `SimCallAlerts` + `EmergencyCallAlert.showSimCall`): no DND pause, no ringer; own channel `sf_sim_emergency_calls` ("Important phone calls", bypass DND), FLAG_INSISTENT + 30 s timeout; answered → removed; missed/rejected → silent "call ended" notice; duplicate screening within 60 s → one alert. Matching/cooldowns unchanged (shared CallDecider).
+- Urgent threshold default 2 (SIM + WhatsApp), window/cooldown 15 min unchanged. One-time migration: stored 3 → 2 (safe: no UI/sync ever wrote the threshold; JS sends only switches) – other values kept; marker `urgent_threshold_v2`.
+- UI: Emergency Contacts › EMERGENCY CALL HANDLING (radio, confirm dialog, mode-aware texts). Activity: "Emergency call alert" / "Urgent call alert after N calls".
+- Platform limitation found: Android 15+ notification cooldown ("polite notifications") can quieten/mute a Silent Focus alert posted shortly after another alerting Silent Focus notification (emulator: `notification_alert … politeness=2` → no sound/vibration). A single alert sounded. Alternative (needs approval): app-played alarm-stream sound.
+- Tests: Jest 484/484; native debug 348, release 322, fieldTest 322 (0 failures).
+- Emulator (SF_Round3_Fresh API 36, harness debug build, writes off; role/permissions granted for the test and removed after): Ring Through DND emergency (zen 1→0→1, ringer started/stopped); Alert Only emergency (zen stays 1, one INSISTENT alert, answered → removed, missed → silent "ended" notice); urgent 2nd call in both modes, 3rd in cooldown; WhatsApp ringing emergency + urgent on 2nd call. Pixel_8 (upgraded install): mode reads Ring Through DND, threshold migrated to 2, UI dark theme OK, Cancel saves nothing.
+- APK: `android/app/build/outputs/client-test/SilentFocus-Round8-EmergencyCallModes-SamsungVerificationPending.apk`, fieldTest, 57,759,690 B, SHA-256 `1ce49579861d0a1cde7c81b42bd9cce85b10ed12f02483fcd4e1a16d1e92b343`, debug key v2. Not copied to Desktop.

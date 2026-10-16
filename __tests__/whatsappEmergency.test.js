@@ -109,7 +109,7 @@ describe('native safety properties', () => {
 
     test('own channel that overrides DND - no DND pause, no global DND or ringer change', () => {
         expect(alert).toMatch(/setBypassDnd\(bypass\)/);
-        expect(alert).toMatch(/desiredChannel\(context, NotificationManager\.IMPORTANCE_HIGH, bypass = true\)/);
+        expect(alert).toMatch(/desiredChannel\(context, NotificationManager\.IMPORTANCE_HIGH, bypass = true, spec\)/);
         expect(alert).not.toMatch(/setInterruptionFilter|setNotificationPolicy|ringerMode\s*=(?!=)|setRingerMode|setAutomaticZenRuleState|startBreakthrough/);
         expect(recorder).not.toMatch(/startBreakthrough|setInterruptionFilter|BreakthroughRinger/);
         // The DND rule itself is unchanged by this feature.

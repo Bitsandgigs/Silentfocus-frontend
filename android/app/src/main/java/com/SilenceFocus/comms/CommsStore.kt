@@ -73,11 +73,12 @@ class CommsStore(private val kv: KeyValue) {
         get() = CallSettings(
             emergencyEnabled = kv.getBoolean(KEY_EMERGENCY_ENABLED, true),
             urgentEnabled = kv.getBoolean(KEY_URGENT_ENABLED, true),
-            urgentThreshold = kv.getInt(KEY_URGENT_THRESHOLD, CallSettings.DEFAULT_THRESHOLD),
+            urgentThreshold = migrateUrgentThreshold(),
             urgentWindowMinutes = kv.getInt(KEY_URGENT_WINDOW, CallSettings.DEFAULT_WINDOW_MINUTES),
             urgentCooldownMinutes = kv.getInt(KEY_URGENT_COOLDOWN, CallSettings.DEFAULT_COOLDOWN_MINUTES),
             whatsAppAlertsEnabled = kv.getBoolean(KEY_WA_ALERTS, true),
             whatsAppNameMatch = kv.getBoolean(KEY_WA_NAME_MATCH, false),
+            simCallMode = SimCallMode.fromId(kv.getString(KEY_SIM_CALL_MODE)),
         ).sanitized()
         set(value) {
             val v = value.sanitized()
@@ -88,6 +89,7 @@ class CommsStore(private val kv: KeyValue) {
             kv.putInt(KEY_URGENT_COOLDOWN, v.urgentCooldownMinutes)
             kv.putBoolean(KEY_WA_ALERTS, v.whatsAppAlertsEnabled)
             kv.putBoolean(KEY_WA_NAME_MATCH, v.whatsAppNameMatch)
+            kv.putString(KEY_SIM_CALL_MODE, v.simCallMode.id)
         }
 
     var emergencyContacts: List<EmergencyContact>
@@ -114,6 +116,21 @@ class CommsStore(private val kv: KeyValue) {
         emergencyContacts = emergencyContacts.filterNot { it.id == id }
     }
 
+    /** The stored urgent threshold after the one-time 3 -> 2 move ([CallSettings.migratedThreshold]). */
+    private fun migrateUrgentThreshold(): Int {
+        if (!kv.getBoolean(KEY_THRESHOLD_MIGRATED, false)) {
+            val stored = kv.getInt(KEY_URGENT_THRESHOLD, -1).takeIf { it >= 0 }
+            CallSettings.migratedThreshold(stored)?.takeIf { it != stored }?.let { kv.putInt(KEY_URGENT_THRESHOLD, it) }
+            kv.putBoolean(KEY_THRESHOLD_MIGRATED, true)
+        }
+        return kv.getInt(KEY_URGENT_THRESHOLD, CallSettings.DEFAULT_THRESHOLD)
+    }
+
+    /** The SIM alert currently showing (Alert Only), for dedupe and cleanup; null when none. */
+    var simAlert: SimCallAlerts.Record?
+        get() = SimCallAlerts.Record.decode(kv.getString(KEY_SIM_ALERT))
+        set(value) = kv.putString(KEY_SIM_ALERT, value?.encode())
+
     var repeatCallState: RepeatCallState
         get() {
             val calls = FieldCodec.decode(kv.getString(KEY_CALLS)).mapNotNull { f ->
@@ -129,7 +146,7 @@ class CommsStore(private val kv: KeyValue) {
             kv.putString(KEY_COOLDOWNS, FieldCodec.encode(value.cooldowns.map { listOf(it.key, it.value.toString()) }))
         }
 
-    fun clearRecentCalls() = kv.remove(listOf(KEY_CALLS, KEY_COOLDOWNS, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED, KEY_WA_EPISODES, KEY_WA_ALERTS_SENT, KEY_WA_ALERT_AT))
+    fun clearRecentCalls() = kv.remove(listOf(KEY_CALLS, KEY_COOLDOWNS, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED, KEY_WA_EPISODES, KEY_WA_ALERTS_SENT, KEY_WA_ALERT_AT, KEY_SIM_ALERT))
 
     /** #6: WhatsApp repeat-caller state (hashed `wa:` keys + times), separate from cellular. */
     var waRepeatState: RepeatCallState
@@ -149,11 +166,11 @@ class CommsStore(private val kv: KeyValue) {
             val state = runCatching { WhatsAppCalls.State.valueOf(f[1]) }.getOrNull() ?: return@mapNotNull null
             val first = f[4].toLongOrNull() ?: return@mapNotNull null
             val last = f[5].toLongOrNull() ?: return@mapNotNull null
-            WhatsAppCalls.Episode(f[0], state, f[2], f[3], first, last, f[6].toLongOrNull() ?: 0L)
+            WhatsAppCalls.Episode(f[0], state, f[2], f[3], first, last, f[6].toLongOrNull() ?: 0L, f.getOrNull(7)?.toLongOrNull() ?: 0L)
         }
         set(value) = kv.putString(
             KEY_WA_EPISODES,
-            FieldCodec.encode(value.map { listOf(it.ref, it.state.name, it.caller, it.alertRef, it.firstSeen.toString(), it.lastSeen.toString(), it.endedAt.toString()) }),
+            FieldCodec.encode(value.map { listOf(it.ref, it.state.name, it.caller, it.alertRef, it.firstSeen.toString(), it.lastSeen.toString(), it.endedAt.toString(), it.stamp.toString()) }),
         )
 
     /** When the last emergency/urgent WhatsApp alert was posted (0 = none); diagnostic only. */
@@ -218,6 +235,7 @@ class CommsStore(private val kv: KeyValue) {
             KEY_AR_MESSAGING, KEY_AR_DEFAULT, KEY_AR_COOLDOWN, KEY_AR_ZONES, KEY_AR_MARKS,
             KEY_AR_TIMES, KEY_SEEN, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED,
             KEY_WA_ALERTS, KEY_WA_NAME_MATCH, KEY_WA_ALERTS_SENT, KEY_WA_EPISODES, KEY_WA_ALERT_AT,
+            KEY_SIM_CALL_MODE, KEY_SIM_ALERT,
             WhatsAppCallCheck.KEY,
         ),
     )
@@ -249,6 +267,9 @@ class CommsStore(private val kv: KeyValue) {
         private const val KEY_WA_ALERT_AT = "wa_alert_posted_at"
         private const val KEY_WA_ALERTS = "wa_alerts_enabled"
         private const val KEY_WA_NAME_MATCH = "wa_name_match"
+        private const val KEY_SIM_CALL_MODE = "sim_call_mode"
+        private const val KEY_SIM_ALERT = "sim_alert"
+        private const val KEY_THRESHOLD_MIGRATED = "urgent_threshold_v2"
         private const val KEY_WA_ALERTS_SENT = "wa_alerts_sent"
     }
 }

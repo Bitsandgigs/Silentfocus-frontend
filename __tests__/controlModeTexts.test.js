@@ -35,6 +35,23 @@ test('confirmed account: Custom alone; Location text has no legacy note', () => 
     expect(describeControlModes({locationMode: false, customMode: true, customModeConfirmed: false}, true).zonesActive).toBe(false);
 });
 
-test('Location Mode text is honest: public-place detection is not available', () => {
-    expect(describeControlModes({locationMode: true, customMode: false, customModeConfirmed: true}).locationText).toMatch(/isn't available yet/);
+test('Location Mode text describes public-place silencing', () => {
+    const text = describeControlModes({locationMode: true, customMode: false, customModeConfirmed: true}).locationText;
+    expect(text).toMatch(/library or place of worship/);
+    expect(text).not.toMatch(/isn't available yet/);
+});
+
+test('public places get their own labels everywhere', () => {
+    const {describeEngineState} = require('../src/utils/engineStatus');
+    const {SOURCE_LABELS} = require('../src/utils/sessionHistory');
+    const state = {
+        dndAccess: true,
+        silentActive: true,
+        source: 'PLACE',
+        activeRules: [{source: 'PLACE', name: 'City Library'}],
+    };
+    expect(describeEngineState(state).detail).toBe('Public place: City Library');
+    expect(SOURCE_LABELS.PLACE).toBe('Public place');
+    const paused = describeEngineState({dndAccess: true, silentActive: false, suppressedRules: [{source: 'PLACE'}]});
+    expect(paused.detail).toBe('Public place paused until you leave it');
 });

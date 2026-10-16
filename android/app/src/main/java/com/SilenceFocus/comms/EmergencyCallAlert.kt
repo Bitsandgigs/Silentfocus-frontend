@@ -60,37 +60,47 @@ object EmergencyCallAlert {
 
     private fun nm(ctx: Context) = ctx.getSystemService(NotificationManager::class.java)
 
+    /** One alert channel: WhatsApp calls ([WHATSAPP]) or SIM calls in Alert Only mode ([SIM]). */
+    data class ChannelSpec(val id: String, val name: String, val description: String)
+
+    val WHATSAPP = ChannelSpec(CHANNEL_ID, CHANNEL_NAME, CHANNEL_DESCRIPTION)
+    val SIM = ChannelSpec(
+        "sf_sim_emergency_calls",
+        "Important phone calls",
+        "Silent Focus's own alert when an emergency contact or a repeat caller phones you while Silent Focus is on (Alert Only).",
+    )
+
     /** Creates the channel when it doesn't exist and DND access is granted (so the bypass flag sticks). */
-    fun ensureChannel(context: Context): NotificationChannel? {
+    fun ensureChannel(context: Context, spec: ChannelSpec = WHATSAPP): NotificationChannel? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val nm = nm(context) ?: return null
         val dndAccess = nm.isNotificationPolicyAccessGranted
-        nm.getNotificationChannel(CHANNEL_ID)?.let { existing ->
+        nm.getNotificationChannel(spec.id)?.let { existing ->
             // Round 4: plain-language name/description, and the "override Do Not
             // Disturb" flag re-asserted when DND access is (back). Re-registering
             // always passes the FULL desired channel: Android copies an app's
             // bypass flag onto a channel the user hasn't customised, so a bare
             // rename would switch the override off. A user's own changes
             // (sound, override, importance) are never overwritten by Android.
-            val outdated = existing.name?.toString() != CHANNEL_NAME || existing.description != CHANNEL_DESCRIPTION
+            val outdated = existing.name?.toString() != spec.name || existing.description != spec.description
             if (outdated || (dndAccess && !existing.canBypassDnd())) {
-                runCatching { nm.createNotificationChannel(desiredChannel(context, existing.importance, bypass = dndAccess || existing.canBypassDnd())) }
-                return nm.getNotificationChannel(CHANNEL_ID) ?: existing
+                runCatching { nm.createNotificationChannel(desiredChannel(context, existing.importance, bypass = dndAccess || existing.canBypassDnd(), spec)) }
+                return nm.getNotificationChannel(spec.id) ?: existing
             }
             return existing
         }
         if (!dndAccess) return null
         return runCatching {
-            nm.createNotificationChannel(desiredChannel(context, NotificationManager.IMPORTANCE_HIGH, bypass = true))
-            nm.getNotificationChannel(CHANNEL_ID)
+            nm.createNotificationChannel(desiredChannel(context, NotificationManager.IMPORTANCE_HIGH, bypass = true, spec))
+            nm.getNotificationChannel(spec.id)
         }.getOrNull()
     }
 
-    private fun desiredChannel(context: Context, importance: Int, bypass: Boolean): NotificationChannel {
+    private fun desiredChannel(context: Context, importance: Int, bypass: Boolean, spec: ChannelSpec): NotificationChannel {
         val sound = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE)
             ?: Settings.System.DEFAULT_NOTIFICATION_URI
-        return NotificationChannel(CHANNEL_ID, CHANNEL_NAME, importance).apply {
-            description = CHANNEL_DESCRIPTION
+        return NotificationChannel(spec.id, spec.name, importance).apply {
+            description = spec.description
             setBypassDnd(bypass)
             setSound(
                 sound,
@@ -116,9 +126,9 @@ object EmergencyCallAlert {
         val sound: Boolean,
     )
 
-    fun status(context: Context): Status {
+    fun status(context: Context, spec: ChannelSpec = WHATSAPP): Status {
         val nm = nm(context)
-        val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ensureChannel(context) else null
+        val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ensureChannel(context, spec) else null
         val legacy = Build.VERSION.SDK_INT < Build.VERSION_CODES.O
         return Status(
             notificationsAllowed = nm?.areNotificationsEnabled() == true,
@@ -152,6 +162,8 @@ object EmergencyCallAlert {
         repeatCount: Int,
         ref: String,
         open: PendingIntent?,
+        /** The call was already marked missed by WhatsApp (it never rang): "call back" wording, no timeout. */
+        missed: Boolean = false,
     ): String {
         val ctx = context.applicationContext
         val s = status(ctx)
@@ -161,8 +173,8 @@ object EmergencyCallAlert {
             return outcome
         }
         return try {
-            val (pubTitle, pubText) = WhatsAppEmergency.publicText(kind, app)
-            val (title, text) = WhatsAppEmergency.privateText(kind, app, who, repeatCount)
+            val (pubTitle, pubText) = WhatsAppEmergency.publicText(kind, app, missed)
+            val (title, text) = WhatsAppEmergency.privateText(kind, app, who, repeatCount, missed)
             val tap = open ?: launch(ctx, appPackage)
             val publicVersion = NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_silent_focus)
@@ -181,7 +193,8 @@ object EmergencyCallAlert {
                 .setPublicVersion(publicVersion)
                 .setVibrate(VIBRATION)
                 .setAutoCancel(true)
-                .setTimeoutAfter(TIMEOUT_MS)
+                // A missed call stays until seen; a ringing one ends with the call.
+                .apply { if (!missed) setTimeoutAfter(TIMEOUT_MS) }
                 .apply { tap?.let { setContentIntent(it) } }
                 .apply { tap?.let { addAction(0, "Open $app", it) } }
                 .build()
@@ -230,7 +243,12 @@ object EmergencyCallAlert {
     fun readiness(context: Context, silentFocusOn: Boolean): Readiness {
         val ctx = context.applicationContext
         val s = status(ctx)
-        val ringer = runCatching { ctx.getSystemService(AudioManager::class.java)?.ringerMode }.getOrNull() ?: -1
+        val current = runCatching { ctx.getSystemService(AudioManager::class.java)?.ringerMode }.getOrNull() ?: -1
+        // Android 15+: while Silent Focus's mode is on, the ringer reads Silent
+        // because the mode mutes ringer sounds - the user's own setting is the
+        // one captured when Silent Focus turned on.
+        val before = com.SilenceFocus.automation.EngineStore(ctx).previousRingerMode
+        val ringer = if (silentFocusOn && before >= 0) before else current
         val filter = runCatching { nm(ctx)?.currentInterruptionFilter }.getOrNull() ?: NotificationManager.INTERRUPTION_FILTER_UNKNOWN
         return Readiness(soundReadiness(outcomeFor(s), s.sound, ringer, filter, silentFocusOn), ringer, filter)
     }
@@ -272,6 +290,83 @@ object EmergencyCallAlert {
     }
 
     const val TEST_TAG = "sf-test-alert"
+
+    // ---- SIM calls, Alert Only mode (Emergency Call Handling, Option A)
+
+    private const val SIM_NOTIFICATION_ID = 7311
+    private const val SIM_TAG = "sim-call"
+
+    /**
+     * Posts (or replaces) the alert for a qualifying SIM call that keeps
+     * ringing silently under Silent Focus. FLAG_INSISTENT makes Android repeat
+     * the channel's sound and vibration until the notification is dismissed,
+     * cancelled or times out ([SimCallAlerts.ALERT_MS]); the system plays it,
+     * following the ringer mode and the user's channel settings, so nothing
+     * of ours can keep sounding once the notification is gone.
+     */
+    fun showSimCall(context: Context, kind: BreakthroughKind, count: Int): String {
+        val ctx = context.applicationContext
+        val outcome = outcomeFor(status(ctx, SIM))
+        if (outcome == NOTIFICATIONS_OFF || outcome == CHANNEL_OFF) {
+            Log.i(TAG, "SIM $kind alert not shown: $outcome")
+            return outcome
+        }
+        return try {
+            val (title, text) = SimCallAlerts.text(kind, count, ended = false)
+            val n = simBuilder(ctx, title, text, PhoneApp.DIALER)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVibrate(VIBRATION)
+                .setTimeoutAfter(SimCallAlerts.ALERT_MS)
+                .build()
+            n.flags = n.flags or Notification.FLAG_INSISTENT
+            nm(ctx)?.notify(SIM_TAG, SIM_NOTIFICATION_ID, n)
+            Log.i(TAG, "SIM $kind alert: $outcome")
+            outcome
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "SIM alert failed: ${e.javaClass.simpleName}")
+            FAILED
+        }
+    }
+
+    /**
+     * The SIM call stopped ringing: the alert is removed and, for [notice]
+     * (missed or rejected), replaced by a silent "call ended" notice.
+     */
+    fun endSimCall(context: Context, record: SimCallAlerts.Record, notice: Boolean) {
+        val ctx = context.applicationContext
+        val nm = nm(ctx) ?: return
+        runCatching { nm.cancel(SIM_TAG, SIM_NOTIFICATION_ID) }
+        if (!notice) return
+        runCatching {
+            val (title, text) = SimCallAlerts.text(record.kind, record.count, ended = true)
+            nm.notify(SIM_TAG, SIM_NOTIFICATION_ID, simBuilder(ctx, title, text, PhoneApp.CALL_LOG).setSilent(true).build())
+        }.onFailure { Log.w(TAG, "SIM call-ended notice failed: ${it.javaClass.simpleName}") }
+    }
+
+    /** No name or number in either version (lock screen); tapping opens the Phone app. */
+    private fun simBuilder(ctx: Context, title: String, text: String, phoneTarget: String): NotificationCompat.Builder {
+        val publicVersion = NotificationCompat.Builder(ctx, SIM.id)
+            .setSmallIcon(R.drawable.ic_stat_silent_focus)
+            .setContentTitle(title)
+            .setContentText(text)
+            .build()
+        val open = runCatching {
+            PendingIntent.getActivity(
+                ctx, SIM_NOTIFICATION_ID, PhoneApp.intent(phoneTarget),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }.getOrNull()
+        return NotificationCompat.Builder(ctx, SIM.id)
+            .setSmallIcon(R.drawable.ic_stat_silent_focus)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setAutoCancel(true)
+            .apply { open?.let(::setContentIntent) }
+    }
 
     private fun launch(ctx: Context, pkg: String): PendingIntent? =
         runCatching { ctx.packageManager.getLaunchIntentForPackage(pkg) }.getOrNull()?.let {

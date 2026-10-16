@@ -130,22 +130,45 @@ class DndController(context: Context, private val store: EngineStore) {
 
     /** Reuses the stored rule, recreating it if the user deleted it in Settings. */
     private fun ensureZenRule(): String {
-        store.zenRuleId?.let { id -> if (nm.getAutomaticZenRule(id) != null) return id }
-        val policy = ZenPolicy.Builder()
-            .disallowAllSounds()
-            .allowAlarms(true)
-            .allowMedia(true)
-            .build()
+        store.zenRuleId?.let { id ->
+            nm.getAutomaticZenRule(id)?.let { existing ->
+                allowPriorityChannels(id, existing)
+                return id
+            }
+        }
         val rule = AutomaticZenRule(
             RULE_NAME,
             null,
             ComponentName(ctx, MainActivity::class.java),
             conditionId(),
-            policy,
+            policy(),
             NotificationManager.INTERRUPTION_FILTER_PRIORITY,
             true,
         )
         return nm.addAutomaticZenRule(rule).also { store.zenRuleId = it }
+    }
+
+    private fun policy(): ZenPolicy = ZenPolicy.Builder()
+        .disallowAllSounds()
+        .allowAlarms(true)
+        .allowMedia(true)
+        .apply {
+            // Channels marked "Ignore Do Not Disturb" (Silent Focus's own
+            // WhatsApp emergency/urgent alert) must still sound. Left unset,
+            // Android 15+ / One UI resolves it from the device's mode
+            // defaults, which can block them.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) allowPriorityChannels(true)
+        }
+        .build()
+
+    /** Rules created by older versions left priority channels unset: update them once. */
+    private fun allowPriorityChannels(id: String, rule: AutomaticZenRule) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return
+        if (rule.zenPolicy?.priorityChannelsAllowed == ZenPolicy.STATE_ALLOW) return
+        runCatching {
+            rule.zenPolicy = policy()
+            nm.updateAutomaticZenRule(id, rule)
+        }.onFailure { Log.w(TAG, "zen rule update failed: ${it.javaClass.simpleName}") }
     }
 
     companion object {

@@ -30,6 +30,9 @@ object PhoneApp {
         return openFirst(ORDER) { target -> start(ctx, intentFor(target)) }
     }
 
+    /** The Phone app intent for [target] (also the tap action of SIM call alerts). */
+    fun intent(target: String): Intent = intentFor(target)
+
     private fun intentFor(target: String): Intent = when (target) {
         // Data AND type together: type alone resolved to Contacts' "non-phone"
         // screen and the URI alone to Messages on a Pixel image; together they

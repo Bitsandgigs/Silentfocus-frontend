@@ -21,17 +21,45 @@ export const REPLY_COOLDOWN_OPTIONS = [
     {minutes: 60, label: '1 hour'},
 ];
 
+/**
+ * Emergency Call Handling (SIM calls only; WhatsApp is always an alert).
+ * Ids match the native SimCallMode. Ring Through DND is the default for
+ * existing and new installs (the behaviour before this setting existed).
+ */
+export const SIM_CALL_MODES = {
+    RING_THROUGH_DND: 'ring_through_dnd',
+    ALERT_ONLY: 'alert_only',
+};
+
+/** Unknown / missing values read as Ring Through DND (same rule as native). */
+export const normalizeSimCallMode = mode =>
+    Object.values(SIM_CALL_MODES).includes(mode) ? mode : SIM_CALL_MODES.RING_THROUGH_DND;
+
+export const SIM_CALL_MODE_OPTIONS = [
+    {
+        mode: SIM_CALL_MODES.RING_THROUGH_DND,
+        title: 'Ring Through DND',
+        body: 'Allow emergency and urgent SIM calls to ring while Silent Focus is active.',
+    },
+    {
+        mode: SIM_CALL_MODES.ALERT_ONLY,
+        title: 'Alert Only',
+        body: 'Keep Silent Focus active and notify you with a separate emergency alert when an emergency or urgent SIM call arrives.',
+    },
+];
+
 export const DEFAULT_COMMS_STATE = {
     callSettings: {
         emergencyEnabled: true,
         urgentEnabled: true,
-        urgentThreshold: 3,
+        urgentThreshold: 2,
         urgentWindowMinutes: 15,
         urgentCooldownMinutes: 15,
         // WhatsApp / WhatsApp Business: Silent Focus's own alert (emergency + urgent).
         whatsAppAlertsEnabled: true,
         // Opt-in: match by name when WhatsApp exposes no number (less reliable).
         whatsAppNameMatch: false,
+        simCallMode: SIM_CALL_MODES.RING_THROUGH_DND,
     },
     // Status of the "Emergency & urgent WhatsApp calls" alert channel.
     whatsAppAlert: {
@@ -69,7 +97,11 @@ export const normalizeCommsState = raw => {
     return {
         ...DEFAULT_COMMS_STATE,
         ...s,
-        callSettings: {...DEFAULT_COMMS_STATE.callSettings, ...(s.callSettings || {})},
+        callSettings: {
+            ...DEFAULT_COMMS_STATE.callSettings,
+            ...(s.callSettings || {}),
+            simCallMode: normalizeSimCallMode((s.callSettings || {}).simCallMode),
+        },
         autoReply: {
             ...DEFAULT_COMMS_STATE.autoReply,
             ...(s.autoReply || {}),
@@ -168,16 +200,19 @@ const ALERT_NOT_ATTEMPTED = {
  */
 export const describeCallCheck = (r, settings = {}) => {
     const c = r || {};
-    const threshold = settings.urgentThreshold || 3;
+    const threshold = settings.urgentThreshold || DEFAULT_COMMS_STATE.callSettings.urgentThreshold;
     const recognised = c.emergencyMatched || c.urgentReached;
+    // A call WhatsApp marked missed without ringing (Do Not Disturb) is still
+    // a detected call: Silent Focus evaluates it like a ringing one.
+    const detected = c.ringing || c.silenced;
     let urgent;
-    if (!c.ringing || c.emergencyMatched) urgent = 'Not applicable';
+    if (!detected || c.emergencyMatched) urgent = 'Not applicable';
     else if (c.urgentReached) urgent = 'Yes';
     else if (c.repeatCount > 0) urgent = `No – call ${Math.min(c.repeatCount, threshold)} of ${threshold}`;
     else urgent = 'No';
     const rows = [
-        {key: 'detected', label: 'WhatsApp call detected', value: yesNo(c.ringing)},
-        {key: 'caller', label: 'Caller recognised', value: c.ringing ? yesNo(c.callerIdentified) : 'No'},
+        {key: 'detected', label: 'WhatsApp call detected', value: yesNo(detected)},
+        {key: 'caller', label: 'Caller recognised', value: detected ? yesNo(c.callerIdentified) : 'No'},
         {key: 'emergency', label: 'Emergency contact matched', value: yesNo(c.emergencyMatched)},
         {key: 'urgent', label: 'Urgent repeat-call rule reached', value: urgent},
         {key: 'alert', label: 'Alert attempted', value: yesNo(c.alertAttempted)},
@@ -186,9 +221,14 @@ export const describeCallCheck = (r, settings = {}) => {
     const who = c.emergencyMatched ? 'your emergency contact' : 'a repeat caller';
     let summary;
     let action = null;
-    if (!c.ringing) {
+    if (!detected) {
         if (!c.notificationAccess) {
             summary = 'No WhatsApp call was detected. Please check notification access.';
+            action = 'NOTIFICATION_ACCESS';
+        } else if (c.listenerConnected === false && !c.waSeen) {
+            // Access granted but Android hasn't connected Silent Focus's listener
+            // (common on Samsung after an update or a battery kill).
+            summary = 'Silent Focus isn’t receiving notifications right now. Turn its notification access off and on again, then repeat the check.';
             action = 'NOTIFICATION_ACCESS';
         } else if (c.callLikeSeen) {
             summary = 'A WhatsApp call notification arrived, but we could not tell that it was ringing. Please send us a screenshot of this result.';
@@ -224,6 +264,11 @@ export const describeCallCheck = (r, settings = {}) => {
         action = 'SETTINGS';
     } else {
         summary = `We recognised ${who} and played the alert. Did you hear it?`;
+    }
+    if (c.silenced && !c.ringing) {
+        summary = recognised && c.alertAttempted
+            ? `WhatsApp didn’t ring because Do Not Disturb was on, so it marked the call as missed. Silent Focus recognised ${who} and alerted you to call back.`
+            : `WhatsApp didn’t ring because Do Not Disturb was on, so it marked the call as missed. ${summary}`;
     }
     return {rows, summary, action};
 };
@@ -266,7 +311,8 @@ export const callExceptionBlockers = state => {
 
 export const describeUrgentRule = cs => {
     const c = {...DEFAULT_COMMS_STATE.callSettings, ...(cs || {})};
-    return `If the same number calls ${c.urgentThreshold} times within ${c.urgentWindowMinutes} minutes while Silent Focus is on, the ${ordinal(c.urgentThreshold)} call rings.`;
+    const outcome = normalizeSimCallMode(c.simCallMode) === SIM_CALL_MODES.ALERT_ONLY ? 'triggers an alert' : 'rings';
+    return `If the same number calls ${c.urgentThreshold} times within ${c.urgentWindowMinutes} minutes while Silent Focus is on, the ${ordinal(c.urgentThreshold)} call ${outcome}.`;
 };
 
 const ordinal = n => {

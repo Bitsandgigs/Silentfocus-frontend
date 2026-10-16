@@ -22,8 +22,10 @@ object CallBreakthroughs {
     private const val TAG = "SilentFocusCalls"
 
     /**
-     * Handles one call. Returns the outcome; when it qualifies, silencing is
-     * paused through the engine and the caller's ringtone is played.
+     * Handles one call. Returns the outcome; when it qualifies, Emergency Call
+     * Handling decides the response: Ring Through DND pauses silencing through
+     * the engine and plays the ringtone (unchanged); Alert Only keeps Do Not
+     * Disturb on and posts Silent Focus's own alert ([SimCallAlerts]).
      */
     @Synchronized
     fun onCall(context: Context, number: String?, incoming: Boolean, now: Long = System.currentTimeMillis()): CallOutcome {
@@ -36,9 +38,23 @@ object CallBreakthroughs {
         val outcome = CallDecider(comms.emergencyContacts, comms.callSettings, comms.salt)
             .onCall(number, incoming, silentActive, now, comms.repeatCallState)
         comms.repeatCallState = outcome.state
+        val handling = SimCallAlerts.handling(outcome.breakthrough, comms.callSettings.simCallMode)
 
         val caller = PhoneNumbers.redact(number)
-        Log.i(TAG, "call ${if (incoming) "in" else "out"} from $caller: ${outcome.breakthrough ?: outcome.reason}")
+        Log.i(TAG, "call ${if (incoming) "in" else "out"} from $caller: ${outcome.breakthrough ?: outcome.reason} $handling")
+
+        // Alert Only: shown before journaling so the row records the outcome.
+        var alert: String? = null
+        if (handling == SimCallAlerts.Handling.ALERT) {
+            val key = PhoneNumbers.hashedKey(number, comms.salt) ?: "sim:unknown"
+            alert = if (SimCallAlerts.isDuplicate(comms.simAlert, key, now)) {
+                WhatsAppEmergency.REASON_DUPLICATE
+            } else {
+                EmergencyCallAlert.showSimCall(ctx, outcome.breakthrough!!, outcome.repeatCount).also {
+                    comms.simAlert = SimCallAlerts.Record(key, outcome.breakthrough, outcome.repeatCount, now)
+                }
+            }
+        }
 
         if (outcome.record) {
             engine.appendEvent(JSONObject().apply {
@@ -51,6 +67,10 @@ object CallBreakthroughs {
                 outcome.contact?.name?.let { put("contactName", it) }
                 if (outcome.repeatCount > 0) put("repeatCount", outcome.repeatCount)
                 if (outcome.breakthrough == null) put("detail", outcome.reason)
+                if (handling == SimCallAlerts.Handling.ALERT) {
+                    put("handling", SimCallMode.ALERT_ONLY.id)
+                    alert?.let { put("alert", it) }
+                }
                 put("at", now)
             })
         }
@@ -63,6 +83,11 @@ object CallBreakthroughs {
             })
         }
 
+        if (handling == SimCallAlerts.Handling.ALERT) {
+            // The call may already have ended while it was being screened.
+            if (isPhoneIdle(ctx) == true) onSimCallEnded(ctx, answered = false)
+            return outcome
+        }
         val kind = outcome.breakthrough ?: return outcome
         val reason = if (kind == BreakthroughKind.EMERGENCY_CONTACT) TriggerReason.EMERGENCY_EXCEPTION else TriggerReason.URGENT_CALL
         val paused = AutomationEngine.startBreakthrough(ctx, kind.name, reason, now)
@@ -98,5 +123,24 @@ object CallBreakthroughs {
     fun onRingingStopped(context: Context) {
         BreakthroughRinger.stop()
         AutomationEngine.endBreakthrough(context.applicationContext)
+    }
+
+    /**
+     * Alert Only: the phone left the ringing state. [answered] (OFFHOOK)
+     * removes the alert; ringing -> idle leaves a silent "call ended" notice.
+     * Without READ_PHONE_STATE this never runs and the alert ends at its
+     * timeout ([SimCallAlerts.ALERT_MS]).
+     */
+    @Synchronized
+    fun onSimCallEnded(context: Context, answered: Boolean, now: Long = System.currentTimeMillis()) {
+        val ctx = context.applicationContext
+        val comms = CommsStore(ctx)
+        val record = comms.simAlert ?: return
+        when (SimCallAlerts.onCallEnded(record, answered, now)) {
+            SimCallAlerts.EndAction.CANCEL -> EmergencyCallAlert.endSimCall(ctx, record, notice = false)
+            SimCallAlerts.EndAction.ENDED_NOTICE -> EmergencyCallAlert.endSimCall(ctx, record, notice = true)
+            SimCallAlerts.EndAction.NONE -> Unit
+        }
+        comms.simAlert = null
     }
 }

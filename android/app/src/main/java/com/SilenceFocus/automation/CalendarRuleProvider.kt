@@ -52,6 +52,12 @@ class CalendarRuleProvider(
         return best?.from(RuleSource.CALENDAR)
     }
 
+    override fun nextStartAfter(nowMillis: Long, tz: TimeZone): Boundary? =
+        usable().map { effectiveWindow(it, tz).first }
+            .filter { it > nowMillis }
+            .minOrNull()
+            ?.let { Boundary(it, BoundaryKind.START).from(RuleSource.CALENDAR) }
+
     companion object {
         private const val MINUTE = 60_000L
         private val UTC: TimeZone = TimeZone.getTimeZone("UTC")

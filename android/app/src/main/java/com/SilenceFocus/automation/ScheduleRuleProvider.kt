@@ -41,6 +41,12 @@ class ScheduleRuleProvider(private val rules: List<ScheduleRule>) : SilenceRuleP
         return best?.from(RuleSource.SCHEDULE)
     }
 
+    override fun nextStartAfter(nowMillis: Long, tz: TimeZone): Boundary? =
+        usable.flatMap { rule -> (0..8).mapNotNull { occurrence(rule, nowMillis, tz, it)?.first } }
+            .filter { it > nowMillis }
+            .minOrNull()
+            ?.let { Boundary(it, BoundaryKind.START).from(RuleSource.SCHEDULE) }
+
     /**
      * The occurrence of [rule] starting on the day [dayOffset] days from the
      * day containing [nowMillis], or null if the rule doesn't run that day.

@@ -59,7 +59,7 @@ object SessionTracker {
             return if (open == null) sessions else sessions.dropLast(1) + open.copy(end = now)
         }
         val start = if (since > 0) since else now
-        val zones = rules.filter { it.source == RuleSource.ZONE }.mapNotNull { it.name?.takeIf(String::isNotBlank) }
+        val zones = rules.filter { it.source == RuleSource.ZONE || it.source == RuleSource.PLACE }.mapNotNull { it.name?.takeIf(String::isNotBlank) }
         val srcs = (rules.map { it.source.name } + listOfNotNull(source)).toSet()
         if (open == null || (since > 0 && open.start != since)) {
             // A different activation than the open one (e.g. the end was

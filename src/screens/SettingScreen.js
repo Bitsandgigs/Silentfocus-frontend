@@ -49,6 +49,7 @@ import {
     DEFAULT_REPLY,
     MAX_TEMPLATE_LENGTH,
     getCommsState,
+    openNotificationAccessSettings,
     setAutoReplySettings,
 } from '../utils/comms';
 
@@ -145,6 +146,22 @@ const SettingsScreen = () => {
         }
     };
 
+    // The Auto Reply screen has no on/off switch; this is the only place to
+    // turn it on, so it carries the notification-access prompt.
+    const onToggleAutoReply = v => {
+        if (v && !comms.notificationAccess) {
+            Alert.alert(
+                'Notification access needed',
+                'Auto reply works through the reply button in messaging notifications, so Silent Focus needs notification access. Message text is never stored or uploaded.',
+                [
+                    {text: 'Not now', style: 'cancel'},
+                    {text: 'Open settings', onPress: openNotificationAccessSettings},
+                ],
+            );
+        }
+        saveAutoReply({enabled: v});
+    };
+
     // `previous`: the modes before this optimistic toggle, restored when
     // the server didn't accept the change (offline, 4xx/5xx).
     // `customModeConfirmed`: only the Custom toggle itself sends it - the
@@ -223,7 +240,16 @@ const SettingsScreen = () => {
 
     const toggleSwitch = async type => {
         if (type === 'location') {
-            // Reserved for public places (not implemented): no location prompt.
+            if (!locationMode) {
+                // Public places are found and watched in the background.
+                const perms = await ensureLocationAutomationPermissions();
+                if (!perms.automationReady) {
+                    showAlert(
+                        Constants.commonConstant.appName,
+                        'Location Mode is on, but it only works once location is allowed "all the time". You can allow it later from Home.',
+                    );
+                }
+            }
             setLocationMode(prev => !prev);
             handleSetControlModes(
                 {locationMode: !locationMode, calendarMode, customMode},
@@ -475,9 +501,7 @@ const SettingsScreen = () => {
                             </Text>
                             <Switch
                                 value={comms.autoReply.enabled}
-                                onValueChange={v =>
-                                    saveAutoReply({enabled: v})
-                                }
+                                onValueChange={onToggleAutoReply}
                                 trackColor={{false: '#444', true: '#F08A2C'}}
                                 thumbColor="#fff"
                                 accessibilityLabel="Auto reply"

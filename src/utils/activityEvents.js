@@ -43,6 +43,7 @@ export const categoryOf = type => {
 const SOURCE_LABEL = {
     MANUAL: 'manual',
     ZONE: 'Silent Zone',
+    PLACE: 'public place',
     SCHEDULE: 'schedule',
     CALENDAR: 'calendar event',
 };
@@ -140,6 +141,10 @@ const describeEventParts = e => {
             return {title: named('Silent Zone activated', e.name), subtitle: null};
         case 'ZONE_EXIT':
             return {title: named('Silent Zone ended', e.name), subtitle: null};
+        case 'PLACE_ENTER':
+            return {title: named('Public place silence started', e.name), subtitle: null};
+        case 'PLACE_EXIT':
+            return {title: named('Public place silence ended', e.name), subtitle: null};
         case 'SCHEDULE_STARTED':
             return {title: 'Schedule silence started', subtitle: e.name || null};
         case 'SCHEDULE_ENDED':
@@ -150,16 +155,20 @@ const describeEventParts = e => {
             return {title: 'Calendar silence ended', subtitle: null};
         case 'INCOMING_CALL':
             return {title: `Call from ${e.caller || 'Unknown'}`, subtitle: CALL_REASON[e.detail] || 'Silenced'};
+        // handling 'alert_only': Emergency Call Handling kept Do Not Disturb on
+        // and showed Silent Focus's own alert instead of letting the call ring.
         case 'EMERGENCY_BREAKTHROUGH':
             return {
-                title: 'Emergency contact allowed',
+                title: e.handling === 'alert_only' ? 'Emergency call alert' : 'Emergency contact allowed',
                 subtitle: [e.contactName, e.caller].filter(Boolean).join(' · ') || null,
             };
-        case 'URGENT_REPEAT_CALLER':
+        case 'URGENT_REPEAT_CALLER': {
+            const after = e.repeatCount ? ` after ${e.repeatCount} calls` : '';
             return {
-                title: `Urgent caller allowed after ${e.repeatCount || 3} calls`,
+                title: e.handling === 'alert_only' ? `Urgent call alert${after}` : `Urgent caller allowed${after}`,
                 subtitle: e.caller || null,
             };
+        }
         case 'WHATSAPP_CALL': {
             const app = e.app || 'WhatsApp';
             const who = nameOf(e) || (e.emergency && e.contactName) || UNKNOWN_CALLER;
@@ -167,7 +176,8 @@ const describeEventParts = e => {
             let label;
             let subtitle;
             if (e.emergency) {
-                label = `Emergency contact · ${app} call`;
+                // silenced: WhatsApp marked it missed without ringing (Do Not Disturb).
+                label = `Emergency contact · ${e.silenced ? 'missed ' : ''}${app} call`;
                 const contact = e.contactName && e.contactName !== who ? `Your contact “${e.contactName}”` : null;
                 subtitle = join([label, contact, alert]);
             } else if (e.repeat) {

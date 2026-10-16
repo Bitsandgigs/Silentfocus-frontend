@@ -275,4 +275,27 @@ class WhatsAppCallsTest {
         assertEquals(ActivityEvents.CATEGORY_CALL, ActivityEvents.categoryOf(ActivityEvents.WHATSAPP_CALL))
         assertFalse(ActivityEvents.WHATSAPP_CALL in ActivityEvents.UPLOADED_TYPES)
     }
+
+    // ---- WhatsApp silenced by Do Not Disturb: a missed call that never rang
+
+    @Test fun `a re-posted missed-call notification with a later time is a further missed call`() {
+        val p1 = WhatsAppCalls.onPost(emptyList(), State.MISSED, "m1", "wa:a", now, stamp = now)
+        assertTrue(p1.isNew)
+        // Same notification updated (e.g. read state) with the same time: not a new call.
+        assertFalse(WhatsAppCalls.onPost(p1.episodes, State.MISSED, "m1", "wa:a", now + 2_000, stamp = now).isNew)
+        // "2 missed calls": the same notification with a later `when`.
+        val p3 = WhatsAppCalls.onPost(p1.episodes, State.MISSED, "m1", "wa:a", now + 60_000, stamp = now + 60_000)
+        assertTrue(p3.isNew)
+        assertFalse(WhatsAppCalls.onPost(p3.episodes, State.MISSED, "m1", "wa:a", now + 61_000, stamp = now + 60_000).isNew)
+    }
+
+    @Test fun `a missed call right after a ringing call is that call ending, not a silenced one`() {
+        val ring = post(emptyList(), "ref1", now)
+        assertTrue(WhatsAppCalls.rangRecently(ring.episodes, now + 30_000))
+        assertFalse(WhatsAppCalls.rangRecently(ring.episodes, now + WhatsAppCalls.SILENCED_WINDOW_MS + 31_000))
+        assertFalse(WhatsAppCalls.rangRecently(emptyList(), now))
+        // Missed episodes never count as "rang".
+        val missed = WhatsAppCalls.onPost(emptyList(), State.MISSED, "m1", "wa:a", now, stamp = now)
+        assertFalse(WhatsAppCalls.rangRecently(missed.episodes, now + 1_000))
+    }
 }

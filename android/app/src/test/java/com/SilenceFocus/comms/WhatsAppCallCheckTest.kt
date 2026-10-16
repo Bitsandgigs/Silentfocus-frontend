@@ -150,4 +150,42 @@ class WhatsAppCallCheckTest {
         store.clearUserData()
         assertNull(C.load(kv))
     }
+
+    @Test fun `a call notification's shape is kept over a later missed-call one`() {
+        val kv = MemoryKeyValue()
+        C.start(kv, now)
+        val unrecognised = WhatsAppCalls.Signals(
+            "com.whatsapp", Notification.CATEGORY_CALL, null, null, ongoing = true, hasFullScreenIntent = false,
+            isGroupConversation = false, isGroupSummary = false, importance = 2, actionCount = 0, channel = "voip_notification_11",
+        )
+        val missed = WhatsAppCalls.Signals(
+            "com.whatsapp", WhatsAppCalls.CATEGORY_MISSED_CALL, null, null, ongoing = false, hasFullScreenIntent = false,
+            isGroupConversation = false, isGroupSummary = false, importance = 2, actionCount = 2, channel = "silent_notifications_3",
+        )
+        C.sawNotification(kv, unrecognised, WhatsAppCalls.classify(unrecognised), now + 1)
+        C.sawNotification(kv, missed, WhatsAppCalls.State.MISSED, now + 2)
+        val r = C.load(kv)!!
+        assertTrue(r.shape.startsWith("cat=call "))
+        assertTrue(r.missed)
+        // Only a missed call seen: its shape is reported.
+        val kv2 = MemoryKeyValue()
+        C.start(kv2, now)
+        C.sawNotification(kv2, missed, WhatsAppCalls.State.MISSED, now + 1)
+        assertTrue(C.load(kv2)!!.shape.startsWith("cat=missed_call "))
+    }
+
+    @Test fun `a silenced missed call is recorded as detected but not ringing`() {
+        val kv = MemoryKeyValue()
+        C.start(kv, now)
+        val h = WhatsAppCallRecorder.Handled(
+            WhatsAppCalls.State.MISSED, WhatsAppEmergency.Kind.EMERGENCY, EmergencyCallAlert.SENT, "NUMBER",
+            WhatsAppEmergency.Identity(null, numberShown = true, nameShown = true, nameWouldMatch = false), 0, callerKnown = true, silenced = true,
+        )
+        C.sawCall(kv, "com.whatsapp", h, true, "m1", now + 1, ringing = false)
+        val r = C.load(kv)!!
+        assertFalse(r.ringing)
+        assertTrue(r.silenced)
+        assertTrue(r.emergencyMatched)
+        assertTrue(r.alertAttempted)
+    }
 }

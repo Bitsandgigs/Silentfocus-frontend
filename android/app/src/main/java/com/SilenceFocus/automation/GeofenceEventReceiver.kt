@@ -32,6 +32,7 @@ class GeofenceEventReceiver : BroadcastReceiver() {
                 store.geofenceSignature = null
             }
             store.zonePresence = emptyMap()
+            store.placePresence = emptyMap()
             val state = AutomationEngine.evaluate(context, TriggerReason.ZONE_EXIT)
             diagnose(context) {
                 GeofenceDiagnostics.Record(
@@ -45,8 +46,9 @@ class GeofenceEventReceiver : BroadcastReceiver() {
             return
         }
 
-        val ids = event.triggeringGeofences.orEmpty()
-            .map { it.requestId }
+        val requestIds = event.triggeringGeofences.orEmpty().map { it.requestId }
+        if (handlePublicPlaces(context, store, requestIds, event.geofenceTransition)) return
+        val ids = requestIds
             .filter { it.startsWith(GeofenceRegistrar.REQUEST_PREFIX) }
             .map { it.removePrefix(GeofenceRegistrar.REQUEST_PREFIX) }
         if (ids.isEmpty()) return
@@ -99,6 +101,37 @@ class GeofenceEventReceiver : BroadcastReceiver() {
                 permissions = permissionFlags(context),
             )
         }
+    }
+
+    /**
+     * Location Mode geofences: ENTER records the entry time (kept if already
+     * known, as re-registration repeats ENTER), EXIT forgets it; the rule
+     * provider silences only once the device has stayed long enough.
+     * Leaving the search area asks for the next search. Returns true when the
+     * event held no Silent Zone geofence (nothing left to do).
+     */
+    private fun handlePublicPlaces(context: Context, store: EngineStore, requestIds: List<String>, transition: Int): Boolean {
+        val placeIds = requestIds.filter { it.startsWith(PublicPlaces.REQUEST_PREFIX) }
+            .map { it.removePrefix(PublicPlaces.REQUEST_PREFIX) }
+        val leftArea = PublicPlaces.AREA_REQUEST_ID in requestIds && transition == Geofence.GEOFENCE_TRANSITION_EXIT
+        if (leftArea) PublicPlaces.scheduleRefresh(context)
+
+        if (placeIds.isNotEmpty() && transition != Geofence.GEOFENCE_TRANSITION_DWELL) {
+            val now = System.currentTimeMillis()
+            val presence = store.placePresence.toMutableMap()
+            val reason = if (transition == Geofence.GEOFENCE_TRANSITION_ENTER) {
+                placeIds.forEach { presence.putIfAbsent(it, now) }
+                TriggerReason.ZONE_ENTER
+            } else {
+                placeIds.forEach { presence.remove(it) }
+                TriggerReason.ZONE_EXIT
+            }
+            val known = store.publicPlaces.map { it.id }.toSet()
+            store.placePresence = presence.filterKeys { it in known }
+            Log.i(TAG, "public place $reason for ${placeIds.size} place(s)")
+            AutomationEngine.evaluate(context, reason)
+        }
+        return requestIds.none { it.startsWith(GeofenceRegistrar.REQUEST_PREFIX) }
     }
 
     /** Records and logs one diagnostic; never fails the receiver. */

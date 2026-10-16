@@ -36,6 +36,7 @@ object AutomationEngine {
         return AutomationEvaluator(
             listOf(
                 LocationRuleProvider(store.zones, store.zonePresence, settings.locationEnabled),
+                PublicPlaceRuleProvider(store.publicPlaces, store.placePresence, settings.publicPlacesEnabled),
                 ScheduleRuleProvider(store.schedules),
                 CalendarRuleProvider(store.calendarEvents, settings),
             ),
@@ -136,7 +137,18 @@ object AutomationEngine {
         val store = EngineStore(context)
         val before = store.settings
         store.settings = settings
-        if (before.locationEnabled != settings.locationEnabled) GeofenceRegistrar.sync(context, force = true)
+        if (before.publicPlacesEnabled != settings.publicPlacesEnabled) {
+            if (settings.publicPlacesEnabled) {
+                // The user's own switch-on may try again right away (daily cap still applies).
+                store.placeLastAttempt = 0L
+                PublicPlaces.onEnabled(context)
+            } else {
+                PublicPlaces.onDisabled(context)
+            }
+        }
+        if (before.locationEnabled != settings.locationEnabled || before.publicPlacesEnabled != settings.publicPlacesEnabled) {
+            GeofenceRegistrar.sync(context, force = true)
+        }
         if (before != settings) CalendarSync.sync(context)
         return evaluate(context, TriggerReason.SETTINGS_CHANGED)
     }
@@ -145,7 +157,9 @@ object AutomationEngine {
     @Synchronized
     fun syncCalendar(context: Context): JSONObject {
         CalendarSync.sync(context)
-        // Also a cheap moment to confirm geofences match permissions.
+        // Also a cheap moment to confirm geofences match permissions, and
+        // that nearby public places aren't older than Google allows.
+        PublicPlaces.onEnabled(context)
         GeofenceRegistrar.sync(context, force = false)
         return evaluate(context, TriggerReason.CALENDAR_SYNCED)
     }
@@ -158,6 +172,7 @@ object AutomationEngine {
     @Synchronized
     fun rebuild(context: Context, reason: TriggerReason): JSONObject {
         if (reason == TriggerReason.BOOT || reason == TriggerReason.APP_UPDATED) {
+            PublicPlaces.onEnabled(context)
             GeofenceRegistrar.sync(context, force = true)
         }
         if (reason == TriggerReason.BOOT) {
@@ -214,6 +229,7 @@ object AutomationEngine {
         runCatching { GeofenceDiagnosticsStore(context).clear() }
         com.SilenceFocus.comms.NotificationProbes.clear(context)
         runCatching { GeofenceRegistrar.removeAll(context) }
+        PublicPlaces.cancel(context)
         CalendarSync.cancelJobs(context.applicationContext)
         return evaluate(context, TriggerReason.LOGOUT)
     }
@@ -237,6 +253,7 @@ object AutomationEngine {
         store.historyOwner = owner
         store.clearAutomationRules()
         runCatching { GeofenceRegistrar.removeAll(context) }
+        PublicPlaces.cancel(context)
         CalendarSync.cancelJobs(context.applicationContext)
         return evaluate(context, TriggerReason.LOGOUT)
     }
@@ -350,6 +367,9 @@ object AutomationEngine {
             JSONObject().put("at", it.atMillis).put("kind", it.kind.name)
         } ?: JSONObject.NULL)
         put("nextTransitionExact", exact)
+        put("nextSilenceStart", d.nextStart?.let {
+            JSONObject().put("at", it.atMillis).put("source", it.source?.name ?: JSONObject.NULL)
+        } ?: JSONObject.NULL)
         put("dndAccess", dnd.hasAccess())
         put("exactAlarmAccess", scheduler.canScheduleExact())
         put("previousRingerMode", DndController.ringerModeName(store.previousRingerMode))
@@ -362,6 +382,13 @@ object AutomationEngine {
             put("limitExceeded", GeofenceRegistrar.selectZones(store.zones).size > GeofenceRegistrar.MAX_GEOFENCES)
             put("status", store.geofenceStatus)
             put("insideZoneIds", JSONArray(store.zonePresence.keys.toList()))
+        })
+        put("publicPlaces", JSONObject().apply {
+            put("enabled", settings.publicPlacesEnabled)
+            put("status", store.placeStatus)
+            put("placeCount", store.publicPlaces.size)
+            put("lastSearchAt", store.placeSearch?.at ?: JSONObject.NULL)
+            put("insidePlaceIds", JSONArray(store.placePresence.keys.toList()))
         })
         put("calendar", JSONObject().apply {
             put("enabled", settings.calendarEnabled)

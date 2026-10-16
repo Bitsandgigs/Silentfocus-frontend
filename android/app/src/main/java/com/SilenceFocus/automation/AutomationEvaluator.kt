@@ -42,6 +42,7 @@ class AutomationEvaluator(private val providers: List<SilenceRuleProvider>) {
             suppressedRules = suppressed,
             override = effective,
             nextBoundary = candidates.minByOrNull { it.atMillis },
+            nextStart = providers.mapNotNull { it.nextStartAfter(nowMillis, tz) }.minByOrNull { it.atMillis },
         )
     }
 

@@ -10,6 +10,7 @@ const Native = Platform.OS === 'android' ? NativeModules.SilentFocus : null;
 export const SOURCE_LABELS = {
     MANUAL: 'Manual',
     ZONE: 'Silent Zone',
+    PLACE: 'Public place',
     SCHEDULE: 'Schedule',
     CALENDAR: 'Calendar',
 };

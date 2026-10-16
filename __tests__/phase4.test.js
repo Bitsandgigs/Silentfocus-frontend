@@ -136,7 +136,8 @@ describe('comms wrapper', () => {
     test('state is normalized with defaults', async () => {
         const s = await comms.getCommsState();
         expect(s.emergencyContacts).toHaveLength(1);
-        expect(s.callSettings.urgentThreshold).toBe(3);
+        expect(s.callSettings.urgentThreshold).toBe(2);
+        expect(s.callSettings.simCallMode).toBe('ring_through_dnd');
         expect(s.callSettings.urgentWindowMinutes).toBe(15);
         expect(s.autoReply.defaultTemplate).toBe(comms.DEFAULT_REPLY);
     });
@@ -205,5 +206,34 @@ describe('comms without the native module (iOS / tests)', () => {
         expect((await comms.getCommsState()).emergencyContacts).toEqual([]);
         expect(await comms.pickEmergencyContact()).toBeNull();
         expect(await comms.getLocalActivity()).toEqual([]);
+    });
+});
+
+describe('Emergency Call Handling + urgent threshold 2 (JS side)', () => {
+    const comms = require('../src/utils/comms');
+    const {describeEvent} = require('../src/utils/activityEvents');
+
+    test('mode ids match native; unknown or missing values read as Ring Through DND', () => {
+        expect(comms.SIM_CALL_MODES).toEqual({RING_THROUGH_DND: 'ring_through_dnd', ALERT_ONLY: 'alert_only'});
+        expect(comms.normalizeSimCallMode('alert_only')).toBe('alert_only');
+        [undefined, null, '', 'ALERT_ONLY', 'ring', 3].forEach(v => expect(comms.normalizeSimCallMode(v)).toBe('ring_through_dnd'));
+        expect(comms.DEFAULT_COMMS_STATE.callSettings.simCallMode).toBe('ring_through_dnd');
+        expect(comms.DEFAULT_COMMS_STATE.callSettings.urgentThreshold).toBe(2);
+    });
+
+    test('urgent rule text: 2nd call, and what it does in each mode', () => {
+        expect(comms.describeUrgentRule({urgentThreshold: 2, urgentWindowMinutes: 15})).toBe(
+            'If the same number calls 2 times within 15 minutes while Silent Focus is on, the 2nd call rings.',
+        );
+        expect(comms.describeUrgentRule({urgentThreshold: 2, urgentWindowMinutes: 15, simCallMode: 'alert_only'})).toBe(
+            'If the same number calls 2 times within 15 minutes while Silent Focus is on, the 2nd call triggers an alert.',
+        );
+    });
+
+    test('Activity rows say "alert" for Alert Only and keep the old wording otherwise', () => {
+        expect(describeEvent({type: 'EMERGENCY_BREAKTHROUGH', contactName: 'Mum', at: 1}).title).toBe('Emergency contact allowed');
+        expect(describeEvent({type: 'EMERGENCY_BREAKTHROUGH', handling: 'alert_only', at: 1}).title).toBe('Emergency call alert');
+        expect(describeEvent({type: 'URGENT_REPEAT_CALLER', repeatCount: 2, at: 1}).title).toBe('Urgent caller allowed after 2 calls');
+        expect(describeEvent({type: 'URGENT_REPEAT_CALLER', repeatCount: 2, handling: 'alert_only', at: 1}).title).toBe('Urgent call alert after 2 calls');
     });
 });

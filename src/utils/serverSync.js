@@ -90,6 +90,8 @@ const LOG_CONTENT = {
 const TRIGGER_TYPES = {
     MANUAL: 'manual',
     ZONE: 'silent_zone',
+    // Location Mode (public places); the backend has no own type for it.
+    PLACE: 'geofence',
     SCHEDULE: 'schedule',
     CALENDAR: 'calendar',
 };

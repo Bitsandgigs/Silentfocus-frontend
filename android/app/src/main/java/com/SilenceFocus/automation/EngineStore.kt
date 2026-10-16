@@ -37,6 +37,58 @@ class EngineStore(context: Context) {
         } ?: emptyMap()
         set(value) = prefs.edit().putString(KEY_PRESENCE, JSONObject(value as Map<*, *>).toString()).apply()
 
+    // ---- Location Mode: public places near the device (PublicPlaces)
+
+    /** The last Places search result (nearest first). */
+    var publicPlaces: List<PublicPlace>
+        get() = parsePlaces(prefs.getString(KEY_PLACES, null))
+        set(value) = prefs.edit().putString(KEY_PLACES, placesToJson(value).toString()).apply()
+
+    /** Place id -> geofence ENTER time (silences after PublicPlaces.DWELL_MS). */
+    var placePresence: Map<String, Long>
+        get() = prefs.getString(KEY_PLACE_PRESENCE, null)?.let { raw ->
+            runCatching {
+                val o = JSONObject(raw)
+                o.keys().asSequence().associateWith { o.getLong(it) }
+            }.getOrNull()
+        } ?: emptyMap()
+        set(value) = prefs.edit().putString(KEY_PLACE_PRESENCE, JSONObject(value as Map<*, *>).toString()).apply()
+
+    /** Where/when [publicPlaces] were searched (null = never). */
+    var placeSearch: PublicPlaces.SearchArea?
+        get() {
+            val at = prefs.getLong(KEY_PLACE_SEARCH_AT, 0L).takeIf { it > 0 } ?: return null
+            return PublicPlaces.SearchArea(
+                Double.fromBits(prefs.getLong(KEY_PLACE_SEARCH_LAT, 0L)),
+                Double.fromBits(prefs.getLong(KEY_PLACE_SEARCH_LNG, 0L)),
+                at,
+            )
+        }
+        set(value) = prefs.edit().apply {
+            if (value == null) {
+                remove(KEY_PLACE_SEARCH_AT).remove(KEY_PLACE_SEARCH_LAT).remove(KEY_PLACE_SEARCH_LNG)
+            } else {
+                putLong(KEY_PLACE_SEARCH_AT, value.at)
+                putLong(KEY_PLACE_SEARCH_LAT, value.latitude.toRawBits())
+                putLong(KEY_PLACE_SEARCH_LNG, value.longitude.toRawBits())
+            }
+        }.apply()
+
+    /** Searches made today: "yyyyDDD:count" (local day), for the daily cap. */
+    var placeSearchQuota: String?
+        get() = prefs.getString(KEY_PLACE_QUOTA, null)
+        set(value) = prefs.edit().putString(KEY_PLACE_QUOTA, value).apply()
+
+    /** When the last Places request was sent (success or not), for spacing retries. */
+    var placeLastAttempt: Long
+        get() = prefs.getLong(KEY_PLACE_LAST_ATTEMPT, 0L)
+        set(value) = prefs.edit().putLong(KEY_PLACE_LAST_ATTEMPT, value).apply()
+
+    /** PublicPlaces outcome, e.g. READY / SEARCH_FAILED / KEY_REJECTED. */
+    var placeStatus: String
+        get() = prefs.getString(KEY_PLACE_STATUS, null) ?: PublicPlaces.STATUS_OFF
+        set(value) = prefs.edit().putString(KEY_PLACE_STATUS, value).apply()
+
     /** GeofenceRegistrar outcome, e.g. REGISTERED / BACKGROUND_LOCATION_MISSING. */
     var geofenceStatus: String
         get() = prefs.getString(KEY_GEOFENCE_STATUS, null) ?: "NOT_CONFIGURED"
@@ -59,6 +111,7 @@ class EngineStore(context: Context) {
             calendarBeforeMinutes = prefs.getInt(KEY_SET_BEFORE, 0),
             calendarAfterMinutes = prefs.getInt(KEY_SET_AFTER, 0),
             ignoreAllDayEvents = prefs.getBoolean(KEY_SET_IGNORE_ALL_DAY, true),
+            publicPlacesEnabled = prefs.getBoolean(KEY_SET_PUBLIC_PLACES, false),
         )
         set(value) = prefs.edit()
             .putBoolean(KEY_SET_LOCATION, value.locationEnabled)
@@ -66,6 +119,7 @@ class EngineStore(context: Context) {
             .putInt(KEY_SET_BEFORE, value.calendarBeforeMinutes)
             .putInt(KEY_SET_AFTER, value.calendarAfterMinutes)
             .putBoolean(KEY_SET_IGNORE_ALL_DAY, value.ignoreAllDayEvents)
+            .putBoolean(KEY_SET_PUBLIC_PLACES, value.publicPlacesEnabled)
             .apply()
 
     // ---- Cached device-calendar occurrences (no titles or other details)
@@ -290,6 +344,15 @@ class EngineStore(context: Context) {
             .remove(KEY_SET_BEFORE)
             .remove(KEY_SET_AFTER)
             .remove(KEY_SET_IGNORE_ALL_DAY)
+            .remove(KEY_SET_PUBLIC_PLACES)
+            .remove(KEY_PLACES)
+            .remove(KEY_PLACE_PRESENCE)
+            .remove(KEY_PLACE_SEARCH_AT)
+            .remove(KEY_PLACE_SEARCH_LAT)
+            .remove(KEY_PLACE_SEARCH_LNG)
+            .remove(KEY_PLACE_QUOTA)
+            .remove(KEY_PLACE_STATUS)
+            .remove(KEY_PLACE_LAST_ATTEMPT)
             .remove(KEY_CAL_EVENTS)
             .remove(KEY_CAL_STATUS)
             .remove(KEY_CAL_LAST_SYNC)
@@ -338,6 +401,15 @@ class EngineStore(context: Context) {
         private const val KEY_SET_BEFORE = "set_calendar_before"
         private const val KEY_SET_AFTER = "set_calendar_after"
         private const val KEY_SET_IGNORE_ALL_DAY = "set_ignore_all_day"
+        private const val KEY_SET_PUBLIC_PLACES = "set_public_places_enabled"
+        private const val KEY_PLACES = "public_places"
+        private const val KEY_PLACE_PRESENCE = "public_place_presence"
+        private const val KEY_PLACE_SEARCH_AT = "public_place_search_at"
+        private const val KEY_PLACE_SEARCH_LAT = "public_place_search_lat"
+        private const val KEY_PLACE_SEARCH_LNG = "public_place_search_lng"
+        private const val KEY_PLACE_QUOTA = "public_place_quota"
+        private const val KEY_PLACE_STATUS = "public_place_status"
+        private const val KEY_PLACE_LAST_ATTEMPT = "public_place_last_attempt"
         private const val KEY_CAL_EVENTS = "calendar_events"
         private const val KEY_CAL_STATUS = "calendar_status"
         private const val KEY_CAL_LAST_SYNC = "calendar_last_sync"
@@ -364,6 +436,30 @@ class EngineStore(context: Context) {
                     put("radius", z.radiusMeters)
                     put("enabled", z.enabled)
                 })
+            }
+        }
+
+        fun placesToJson(places: List<PublicPlace>): JSONArray = JSONArray().apply {
+            places.forEach { p ->
+                put(JSONObject().apply {
+                    put("id", p.id)
+                    p.name?.let { put("name", it) }
+                    put("lat", p.latitude)
+                    put("lng", p.longitude)
+                })
+            }
+        }
+
+        fun parsePlaces(json: String?): List<PublicPlace> {
+            val arr = json?.let { runCatching { JSONArray(it) }.getOrNull() } ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                PublicPlace(
+                    id = o.optString("id"),
+                    name = if (o.has("name")) o.optString("name") else null,
+                    latitude = o.optDouble("lat", Double.NaN),
+                    longitude = o.optDouble("lng", Double.NaN),
+                ).takeIf { it.isValid }
             }
         }
 

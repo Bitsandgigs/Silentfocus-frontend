@@ -58,6 +58,10 @@ class ActivityTestHarnessReceiver : BroadcastReceiver() {
                 // Round 4: real-listener tests on an isolated, signed-out emulator.
                 "wa-silent" -> waSilent(ctx, intent.getBooleanExtra("on", false))
                 "wa-ec-add" -> waEcAdd(ctx)
+                "sim-mode" -> simMode(ctx, intent.getStringExtra("mode"))
+                "sim-state" -> simState(ctx)
+                "sim-alert-test" -> gated { "SIM_ALERT " + com.SilenceFocus.comms.EmergencyCallAlert.showSimCall(ctx, com.SilenceFocus.comms.BreakthroughKind.EMERGENCY_CONTACT, 0) }
+                "sim-alert-clear" -> gated { CommsStore(ctx).simAlert?.let { com.SilenceFocus.comms.EmergencyCallAlert.endSimCall(ctx, it, notice = false) }; (ctx.getSystemService(NotificationManager::class.java)).cancel("sim-call", 7311); CommsStore(ctx).simAlert = null; "SIM_ALERT_CLEARED" }
                 "wa-reset" -> waReset(ctx)
                 "wa-check-start" -> gated { com.SilenceFocus.comms.WhatsAppCallCheck.start(com.SilenceFocus.comms.WhatsAppCallCheck.store(ctx), System.currentTimeMillis()); "CHECK_STARTED" }
                 "wa-check-read" -> waCheckRead(ctx)
@@ -152,6 +156,27 @@ class ActivityTestHarnessReceiver : BroadcastReceiver() {
     private fun waSilent(ctx: Context, on: Boolean): String = gated {
         val s = com.SilenceFocus.automation.AutomationEngine.setManual(ctx, on)
         "SILENT on=$on owned=${EngineStore(ctx).owned} source=${s.optString("source")}"
+    }
+
+    /** Emergency Call Handling: sets the SIM call mode by id (unknown ids are refused, the mode is unchanged). */
+    private fun simMode(ctx: Context, id: String?): String = gated {
+        val mode = com.SilenceFocus.comms.SimCallMode.values().firstOrNull { it.id == id } ?: return@gated "UNKNOWN_MODE"
+        val comms = CommsStore(ctx)
+        comms.callSettings = comms.callSettings.copy(simCallMode = mode)
+        "SIM_MODE ${comms.callSettings.simCallMode.id} threshold=${comms.callSettings.urgentThreshold}"
+    }
+
+    /** Counts/flags only: SIM call mode, pending SIM alert, DND pause, break-through, phone-call rows by type. */
+    private fun simState(ctx: Context): String {
+        val comms = CommsStore(ctx)
+        val engine = EngineStore(ctx)
+        val all = engine.recentEvents()
+        val rows = (0 until all.length()).mapNotNull { all.optJSONObject(it) }
+            .filter { it.optString("type") in setOf("INCOMING_CALL", "EMERGENCY_BREAKTHROUGH", "URGENT_REPEAT_CALLER") }
+            .takeLast(6)
+            .joinToString(" ") { "${it.optString("type")}/${it.optString("handling", "-")}/${it.optString("alert", "-")}/${it.optInt("repeatCount")}" }
+        return "mode=${comms.callSettings.simCallMode.id} threshold=${comms.callSettings.urgentThreshold} simAlert=${comms.simAlert != null} " +
+            "owned=${engine.owned} dndPaused=${engine.dndPaused} breakthrough=${engine.breakthrough != null} rows=[$rows]"
     }
 
     private fun waEcAdd(ctx: Context): String = gated {

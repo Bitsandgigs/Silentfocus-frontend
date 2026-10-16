@@ -27,6 +27,10 @@ import com.google.android.gms.location.LocationServices
  *
  * - One geofence per enabled zone, request id "zone:<backend id>", so a
  *   re-registration replaces instead of duplicating.
+ * - Location Mode adds one ENTER/EXIT geofence per nearby public place
+ *   ("place:<places id>") and one EXIT-only "area" geofence around the last
+ *   search centre that triggers the next search (PublicPlaces). Silent Zones
+ *   always get their geofences first.
  * - Android allows 100 geofences per app; beyond that the lowest zone ids
  *   are registered (deterministic) and the state reports the overflow.
  * - Initial triggers ENTER|EXIT make Play Services report the current
@@ -86,21 +90,27 @@ object GeofenceRegistrar {
         val client = LocationServices.getGeofencingClient(ctx)
         val pi = pendingIntent(ctx)
 
+        val settings = store.settings
         val blocked = when {
-            !store.settings.locationEnabled -> STATUS_DISABLED
+            !settings.locationEnabled && !settings.publicPlacesEnabled -> STATUS_DISABLED
             !hasFine(ctx) -> if (hasCoarse(ctx)) STATUS_APPROXIMATE_ONLY else STATUS_NO_LOCATION_PERMISSION
             !hasBackground(ctx) -> STATUS_NO_BACKGROUND
             else -> null
         }
-        val selected = selectZones(store.zones).take(MAX_GEOFENCES)
+        val selected = if (settings.locationEnabled) selectZones(store.zones).take(MAX_GEOFENCES) else emptyList()
+        val search = store.placeSearch.takeIf { settings.publicPlacesEnabled }
+        val places = if (search != null) PublicPlaces.placesForFences(store.publicPlaces, selected.size) else emptyList()
+        val area = search?.takeIf { selected.size < MAX_GEOFENCES }
+        if (blocked == null && settings.publicPlacesEnabled && search == null) PublicPlaces.scheduleRefresh(ctx)
 
-        if (blocked != null || selected.isEmpty()) {
+        if (blocked != null || (selected.isEmpty() && area == null)) {
             // Without working geofences we can't know where the device is;
             // never keep a zone "active" from a stale callback.
             gate.beginRemoval()
             client.removeGeofences(pi)
             cancelRecoveryJobs(ctx)
             store.zonePresence = emptyMap()
+            store.placePresence = emptyMap()
             store.geofenceRegisteredCount = 0
             store.geofenceSignature = null
             store.geofenceStatus = blocked ?: STATUS_NO_ZONES
@@ -111,16 +121,36 @@ object GeofenceRegistrar {
         // Presence only for zones still registered.
         val ids = selected.map { it.id }.toSet()
         store.zonePresence.let { p -> if (!ids.containsAll(p.keys)) store.zonePresence = p.filterKeys { it in ids } }
+        val placeIds = places.map { it.id }.toSet()
+        store.placePresence.let { p -> if (!placeIds.containsAll(p.keys)) store.placePresence = p.filterKeys { it in placeIds } }
 
         scheduleRecoveryJobs(ctx)
 
-        val signature = selected.joinToString("|") { "${it.id}@${it.latitude},${it.longitude},${it.radiusMeters}" }
+        val signature = selected.joinToString("|") { "${it.id}@${it.latitude},${it.longitude},${it.radiusMeters}" } +
+            places.joinToString("|", prefix = "#") { it.id } +
+            (area?.let { "#area@${it.latitude},${it.longitude}" } ?: "")
         if (!force && signature == store.geofenceSignature && store.geofenceStatus == STATUS_REGISTERED) return
         // The same registration already running covers this call too.
         val ticket = gate.beginRegister(signature) ?: return
 
+        val placeFences = places.map { place ->
+            Geofence.Builder()
+                .setRequestId(PublicPlaces.REQUEST_PREFIX + place.id)
+                .setCircularRegion(place.latitude, place.longitude, PublicPlaces.PLACE_RADIUS_M)
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+                .build()
+        } + listOfNotNull(area?.let {
+            Geofence.Builder()
+                .setRequestId(PublicPlaces.AREA_REQUEST_ID)
+                .setCircularRegion(it.latitude, it.longitude, PublicPlaces.AREA_RADIUS_M)
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
+                .build()
+        })
         val request = GeofencingRequest.Builder()
             .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_EXIT)
+            .addGeofences(placeFences)
             .addGeofences(selected.map { zone ->
                 Geofence.Builder()
                     .setRequestId(REQUEST_PREFIX + zone.id)
@@ -144,7 +174,7 @@ object GeofenceRegistrar {
                     store.geofenceStatus = STATUS_REGISTERED
                     store.geofenceRegisteredCount = selected.size
                     store.geofenceSignature = signature
-                    Log.i(TAG, "registered ${selected.size} geofence(s)")
+                    Log.i(TAG, "registered ${selected.size} zone and ${placeFences.size} place/area geofence(s)")
                     diagnoseRegistration(ctx, STATUS_REGISTERED, null, selected.size)
                     AutomationEngine.evaluate(ctx, TriggerReason.ZONES_CHANGED)
                     if (outcome == GeofenceRegistrationGate.Outcome.APPLY_THEN_RESYNC) sync(ctx, force = true)
@@ -158,6 +188,7 @@ object GeofenceRegistrar {
                     store.geofenceRegisteredCount = 0
                     store.geofenceSignature = null
                     store.zonePresence = emptyMap()
+                    store.placePresence = emptyMap()
                     Log.w(TAG, "geofence registration failed: code=$code")
                     diagnoseRegistration(ctx, store.geofenceStatus, code, 0, always = true)
                     AutomationEngine.evaluate(ctx, TriggerReason.ZONES_CHANGED)
@@ -167,6 +198,7 @@ object GeofenceRegistrar {
             gate.finish(ticket, succeeded = false)
             store.geofenceStatus = STATUS_NO_LOCATION_PERMISSION
             store.zonePresence = emptyMap()
+            store.placePresence = emptyMap()
             diagnoseRegistration(ctx, STATUS_NO_LOCATION_PERMISSION, null, 0, always = true)
         }
     }
@@ -242,6 +274,7 @@ object GeofenceRegistrar {
         store.geofenceRegisteredCount = 0
         store.geofenceSignature = null
         store.zonePresence = emptyMap()
+        store.placePresence = emptyMap()
         Log.i(TAG, "location switched off; geofences paused")
         AutomationEngine.evaluate(ctx, TriggerReason.ZONE_EXIT)
     }

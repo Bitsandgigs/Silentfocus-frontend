@@ -9,9 +9,16 @@ import android.content.Intent
 class AutomationAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != AlarmScheduler.ACTION_BOUNDARY) return
-        val calendar = intent.getStringExtra(AlarmScheduler.EXTRA_SOURCE) == RuleSource.CALENDAR.name
-        val reason = when (intent.getStringExtra(AlarmScheduler.EXTRA_KIND)) {
-            BoundaryKind.START.name -> if (calendar) TriggerReason.CALENDAR_START else TriggerReason.SCHEDULE_START
+        val source = intent.getStringExtra(AlarmScheduler.EXTRA_SOURCE)
+        val calendar = source == RuleSource.CALENDAR.name
+        val kind = intent.getStringExtra(AlarmScheduler.EXTRA_KIND)
+        val reason = when (kind) {
+            BoundaryKind.START.name -> when {
+                // The wait at a public place is over.
+                source == RuleSource.PLACE.name -> TriggerReason.ZONE_ENTER
+                calendar -> TriggerReason.CALENDAR_START
+                else -> TriggerReason.SCHEDULE_START
+            }
             BoundaryKind.END.name -> if (calendar) TriggerReason.CALENDAR_END else TriggerReason.SCHEDULE_END
             BoundaryKind.OVERRIDE_EXPIRY.name -> TriggerReason.OVERRIDE_EXPIRED
             BoundaryKind.BREAKTHROUGH_END.name -> TriggerReason.BREAKTHROUGH_ENDED

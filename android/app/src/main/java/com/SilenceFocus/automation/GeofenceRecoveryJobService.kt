@@ -18,7 +18,11 @@ class GeofenceRecoveryJobService : JobService() {
                 GeofenceRegistrar.scheduleRecoveryJobs(this)
                 GeofenceRegistrar.onLocationSettingChanged(this)
             }
-            else -> if (GeofenceRegistrar.isLocationOn(this)) GeofenceRegistrar.sync(this, force = true)
+            else -> if (GeofenceRegistrar.isLocationOn(this)) {
+                // Also renews nearby public places Google no longer lets us cache.
+                PublicPlaces.onEnabled(this)
+                GeofenceRegistrar.sync(this, force = true)
+            }
         }
         return false
     }

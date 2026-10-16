@@ -24,6 +24,7 @@ import android.content.Context
 object WhatsAppCallCheck {
 
     const val KEY = "wa_call_check"
+    private const val MISSED_CATEGORY = WhatsAppCalls.CATEGORY_MISSED_CALL
     const val DURATION_MS = 5 * 60_000L
     const val KEEP_MS = 30 * 60_000L
     private const val MAX_REFS = 10
@@ -40,6 +41,8 @@ object WhatsAppCallCheck {
         /** A ringing call was recognised. */
         val ringing: Boolean = false,
         val missed: Boolean = false,
+        /** WhatsApp marked a call missed without ringing (Do Not Disturb); Silent Focus evaluated it. */
+        val silenced: Boolean = false,
         val calls: Int = 0,
         val app: String = "",
         /** Silent Focus was on at the last ringing call: 1 / 0, -1 unknown. */
@@ -82,6 +85,7 @@ object WhatsAppCallCheck {
             callLikeSeen = b("callLikeSeen"),
             ringing = b("ringing"),
             missed = b("missed"),
+            silenced = b("silenced"),
             calls = i("calls"),
             app = m["app"].orEmpty(),
             silentFocusOn = m["silentFocusOn"]?.toIntOrNull() ?: -1,
@@ -112,6 +116,7 @@ object WhatsAppCallCheck {
             "callLikeSeen" to b(r.callLikeSeen),
             "ringing" to b(r.ringing),
             "missed" to b(r.missed),
+            "silenced" to b(r.silenced),
             "calls" to r.calls.toString(),
             "app" to r.app,
             "silentFocusOn" to r.silentFocusOn.toString(),
@@ -168,7 +173,14 @@ object WhatsAppCallCheck {
         update(kv, now) { r ->
             val callLike = WhatsAppCalls.isCallLike(signals) || state != null
             val ringing = state == WhatsAppCalls.State.INCOMING
-            val takeShape = callLike && (r.shape.isEmpty() || (ringing && !r.shapeRinging) || (!r.ringing && !ringing && !r.shapeRinging))
+            // Ringing shape first; otherwise a `call` notification over a missed-call
+            // one (support needs the call's own structure when it wasn't recognised).
+            val missedShape = state == WhatsAppCalls.State.MISSED
+            val haveCallShape = r.shape.isNotEmpty() && !r.shape.startsWith("cat=$MISSED_CATEGORY ")
+            val takeShape = callLike && (
+                r.shape.isEmpty() || (ringing && !r.shapeRinging) ||
+                    (!r.ringing && !ringing && !r.shapeRinging && !(missedShape && haveCallShape))
+                )
             r.copy(
                 waSeen = true,
                 callLikeSeen = r.callLikeSeen || callLike,
@@ -182,14 +194,15 @@ object WhatsAppCallCheck {
      * A ringing call was handled ([silentFocusOn]) or evaluated without
      * alerting (Silent Focus off). [ref] counts each call notification once.
      */
-    fun sawCall(kv: KeyValue, packageName: String, h: WhatsAppCallRecorder.Handled, silentFocusOn: Boolean, ref: String, now: Long) =
+    fun sawCall(kv: KeyValue, packageName: String, h: WhatsAppCallRecorder.Handled, silentFocusOn: Boolean, ref: String, now: Long, ringing: Boolean = true) =
         update(kv, now) { r ->
             if (ref in r.refs) return@update r
             val outcome = h.alert.orEmpty()
             val attempted = outcome == EmergencyCallAlert.SENT || outcome == EmergencyCallAlert.SENT_SILENCED || outcome == EmergencyCallAlert.FAILED
             val id = h.identity
             r.copy(
-                ringing = true,
+                ringing = r.ringing || ringing,
+                silenced = r.silenced || h.silenced,
                 callLikeSeen = true,
                 calls = r.calls + 1,
                 app = WhatsAppCalls.APPS[packageName] ?: r.app,

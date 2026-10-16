@@ -46,8 +46,8 @@ class SilentFocusCallScreeningService : CallScreeningService() {
 }
 
 /**
- * Ends a break-through when the phone stops ringing (answered -> OFFHOOK,
- * missed/rejected -> IDLE). PHONE_STATE is delivered to manifest receivers
+ * Ends a break-through, or an Alert Only alert, when the phone stops ringing
+ * (answered -> OFFHOOK, missed/rejected -> IDLE). PHONE_STATE is delivered to manifest receivers
  * in the background; it needs READ_PHONE_STATE only (no call-log access, the
  * number isn't read here). Without that permission the break-through ends
  * at its safety expiry instead.
@@ -55,9 +55,12 @@ class SilentFocusCallScreeningService : CallScreeningService() {
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
-        when (intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
-            TelephonyManager.EXTRA_STATE_IDLE, TelephonyManager.EXTRA_STATE_OFFHOOK ->
+        when (val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
+            TelephonyManager.EXTRA_STATE_IDLE, TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                 CallBreakthroughs.onRingingStopped(context)
+                // Alert Only (no-op unless a SIM alert is showing).
+                runCatching { CallBreakthroughs.onSimCallEnded(context, answered = state == TelephonyManager.EXTRA_STATE_OFFHOOK) }
+            }
         }
     }
 }

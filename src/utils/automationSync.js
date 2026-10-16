@@ -63,7 +63,8 @@ export const zonesEnabledFor = (controlModes, deviceConfirmed = false) => {
 /**
  * #4: texts for the Control Center mode cards, derived from the same rule as
  * zonesEnabledFor (never a different one). Location Mode = public places
- * (detection not available yet); Custom = the user's own Silent Zones.
+ * (libraries / places of worship, see PublicPlaces.kt); Custom = the user's
+ * own Silent Zones.
  * Accounts that never confirmed Custom on this app version keep the old
  * rule (Location AND Custom) - explained, never changed silently.
  * Resolves {zonesActive, legacyRule, locationText, customText, customStatus}.
@@ -91,7 +92,7 @@ export const describeControlModes = ({locationMode, customMode, customModeConfir
         zonesActive,
         legacyRule,
         locationText:
-            "For public places such as libraries and places of worship. Automatic public-place detection isn't available yet." +
+            'Silences your phone when you stay a few minutes at a library or place of worship.' +
             (legacyRule ? ' On this account it also has to be on for your own Silent Zones.' : ''),
         customText: 'Silences your phone at places you add yourself, such as your office or home.',
         customStatus,
@@ -106,6 +107,8 @@ export const buildAutomationSettings = ({
 }) => ({
     // Native name kept for stored settings; it gates the user's Silent Zones.
     locationEnabled: zonesEnabledFor(controlModes, deviceCustomConfirmed),
+    // Location Mode: silence at libraries and places of worship nearby.
+    publicPlacesEnabled: toBooleanFlag(controlModes?.locationMode),
     calendarEnabled:
         toBooleanFlag(controlModes?.calendarMode) && calendarConnected === true,
     calendarBeforeMinutes: clampMinutes(settings?.meeting_start_before_minutes),

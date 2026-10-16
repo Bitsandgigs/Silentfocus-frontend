@@ -69,6 +69,13 @@ object WhatsAppCalls {
     /** A call notification removed and re-posted within this gap is the same call (not a new one). */
     const val REPOST_GAP_MS = 4_000L
     const val MAX_TRACKED = 50
+    /**
+     * A missed-call notification with no ringing call notification from
+     * WhatsApp in this window means WhatsApp never rang: it saw Do Not
+     * Disturb and marked the call missed at once (no ringing notification
+     * for us to alert on). Silent Focus then alerts on the missed call.
+     */
+    const val SILENCED_WINDOW_MS = 3 * 60_000L
 
     enum class State { INCOMING, MISSED }
 
@@ -170,6 +177,8 @@ object WhatsAppCalls {
         val firstSeen: Long,
         val lastSeen: Long,
         val endedAt: Long = 0L,
+        /** The notification's own time (`when`); a missed-call notification re-posted with a later one is a further missed call. */
+        val stamp: Long = 0L,
     ) {
         fun ringing(now: Long) = state == State.INCOMING && endedAt == 0L && now - lastSeen in 0..RING_MAX_MS
         fun justEnded(now: Long) = endedAt != 0L && now - endedAt in 0..REPOST_GAP_MS
@@ -191,13 +200,16 @@ object WhatsAppCalls {
      * Anything else is a new call - including the same notification key
      * reused by WhatsApp for a later call after the first one ended.
      */
-    fun onPost(episodes: List<Episode>, state: State, ref: String, caller: String?, now: Long): Post {
+    fun onPost(episodes: List<Episode>, state: State, ref: String, caller: String?, now: Long, stamp: Long = 0L): Post {
         val live = prune(episodes, now)
         val same = live.firstOrNull { it.ref == ref && it.state == state }
         if (same != null && same.endedAt == 0L &&
             (if (state == State.INCOMING) same.ringing(now) else true)
         ) {
-            return Post(false, same.alertRef, live.map { if (it === same) it.copy(lastSeen = now) else it })
+            // WhatsApp updates one missed-call notification per caller ("2 missed
+            // calls"); a later `when` on it is another missed call.
+            val further = state == State.MISSED && same.stamp > 0L && stamp > same.stamp + 1_000L
+            return Post(further, if (further) ref else same.alertRef, live.map { if (it === same) it.copy(lastSeen = now, stamp = maxOf(it.stamp, stamp)) else it })
         }
         val others = live.filterNot { it === same }
         if (state == State.INCOMING) {
@@ -207,9 +219,13 @@ object WhatsAppCalls {
                 return Post(false, alias.alertRef, others + Episode(ref, state, caller.orEmpty(), alias.alertRef, alias.firstSeen, now))
             }
         }
-        val next = (others + Episode(ref, state, caller.orEmpty(), ref, now, now)).sortedBy { it.lastSeen }.takeLast(MAX_TRACKED)
+        val next = (others + Episode(ref, state, caller.orEmpty(), ref, now, now, stamp = stamp)).sortedBy { it.lastSeen }.takeLast(MAX_TRACKED)
         return Post(true, ref, next)
     }
+
+    /** Whether WhatsApp showed any ringing call within [SILENCED_WINDOW_MS] (then a missed call is that call ending, not a silenced one). */
+    fun rangRecently(episodes: List<Episode>, now: Long): Boolean =
+        episodes.any { it.state == State.INCOMING && now - it.lastSeen in 0..SILENCED_WINDOW_MS }
 
     /**
      * Notification [ref] was removed ([state] null) or stopped being a ringing
@@ -287,6 +303,8 @@ object WhatsAppCallRecorder {
         val synthetic: Boolean = false,
         /** Debug harness only: a fixed journal id so its cleanup can find the row. */
         val eventId: String? = null,
+        /** The notification's `when` (tells a further missed call from an update). */
+        val stamp: Long = 0L,
     )
 
     /** Outcome of [handle] (for tests, the debug harness and the diagnostic; no caller data). */
@@ -299,6 +317,8 @@ object WhatsAppCallRecorder {
         val repeatCount: Int = 0,
         /** Something identified the caller (a conversation id, person or name) - the urgent rule can count them. */
         val callerKnown: Boolean = false,
+        /** A missed call WhatsApp never rang for (Do Not Disturb), evaluated like a ringing call. */
+        val silenced: Boolean = false,
     )
 
     @Synchronized
@@ -321,6 +341,8 @@ object WhatsAppCallRecorder {
             // Silent Focus on: only a new call is reported (updates return null).
             val h = handled ?: if (!owned) dryRun(ctx, input) else null
             if (h != null) WhatsAppCallCheck.sawCall(check, input.packageName, h, owned, ref, now)
+        } else if (checking && handled?.silenced == true) {
+            WhatsAppCallCheck.sawCall(check, input.packageName, handled, true, ref, now, ringing = false)
         }
     }
 
@@ -343,16 +365,21 @@ object WhatsAppCallRecorder {
         val salt = comms.salt
         val ref = NotificationSource.ref(salt, input.notificationKey)
         val callerKey = callerKeyOf(salt, input)
-        val post = WhatsAppCalls.onPost(comms.waCallEpisodes, state, ref, callerKey, now)
+        val rang = WhatsAppCalls.rangRecently(comms.waCallEpisodes, now)
+        val post = WhatsAppCalls.onPost(comms.waCallEpisodes, state, ref, callerKey, now, input.stamp)
         comms.waCallEpisodes = post.episodes
         // The same call updated or re-posted: already handled (no second count or alert).
         if (!post.isNew) return null
+        // WhatsApp saw Do Not Disturb and marked the call missed without ever
+        // ringing: the missed call is the only signal, so it gets the same
+        // emergency / urgent check (a call that did ring was handled then).
+        val silenced = state == WhatsAppCalls.State.MISSED && !rang
 
         val settings = comms.callSettings.sanitized()
         var identity: WhatsAppEmergency.Identity? = null
         var match: WhatsAppEmergency.Match? = null
         var repeat: WhatsAppCalls.Repeat? = null
-        if (state == WhatsAppCalls.State.INCOMING) {
+        if (state == WhatsAppCalls.State.INCOMING || silenced) {
             identity = identify(ctx, comms, input, settings)
             match = identity.match
             // Emergency contacts never count toward the urgent rule (same as cellular).
@@ -380,7 +407,7 @@ object WhatsAppCallRecorder {
                 } else {
                     comms.waAlertsSent = limit.history
                     val who = if (kind == WhatsAppEmergency.Kind.EMERGENCY) match?.contact?.name ?: name else name
-                    EmergencyCallAlert.show(ctx, kind, app, input.packageName, who, repeat?.count ?: 0, post.alertRef, input.open)
+                    EmergencyCallAlert.show(ctx, kind, app, input.packageName, who, repeat?.count ?: 0, post.alertRef, input.open, missed = silenced)
                         .also { if (it == EmergencyCallAlert.SENT || it == EmergencyCallAlert.SENT_SILENCED) comms.waAlertPostedAt = now }
                 }
             }
@@ -404,11 +431,12 @@ object WhatsAppCallRecorder {
                 put("repeatCount", repeat.count)
             }
             alert?.let { put("alert", it) }
+            if (silenced) put("silenced", true)
             if (input.synthetic) put(ActivityEvents.SYNTHETIC_FIELD, true)
             put("at", now)
         })
         Log.i(TAG, "${input.packageName}: $state${kind?.let { " $it alert=$alert" } ?: ""}")
-        return Handled(state, kind, alert, match?.method?.name, identity, repeat?.count ?: 0, callerKey != null)
+        return Handled(state, kind, alert, match?.method?.name, identity, repeat?.count ?: 0, callerKey != null, silenced)
     }
 
     private fun callerKeyOf(salt: String, input: CallInput) =
@@ -501,6 +529,7 @@ object WhatsAppCallRecorder {
             ),
             contactUri = uri?.takeIf { it.startsWith("content://com.android.contacts", ignoreCase = true) },
             open = n.contentIntent ?: n.fullScreenIntent,
+            stamp = n.`when`,
         )
     }
 

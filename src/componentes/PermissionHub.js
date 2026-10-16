@@ -21,6 +21,7 @@ const PermissionHub = () => {
     const isDark = useColorScheme() === 'dark';
     const [rows, setRows] = useState(null);
     const [error, setError] = useState(false);
+    const [open, setOpen] = useState(false);
 
     const refresh = useCallback(() => {
         getPermissionHub()
@@ -89,10 +90,27 @@ const PermissionHub = () => {
     }
     if (!rows) return null;
 
+    // Collapsed by default (the list is long); the header still says how
+    // many are missing so a hidden "Fix" is never silent.
+    const missing = rows.filter(r => !r.ok).length;
+    const summary = missing === 0 ? 'All allowed' : `${missing} need${missing === 1 ? 's' : ''} attention`;
+
     return (
         <View style={[styles.card, {backgroundColor: card}]}>
-            {rows.map((r, i) => (
-                <View key={r.key} style={[styles.row, i > 0 && styles.divider]}>
+            <TouchableOpacity
+                onPress={() => setOpen(o => !o)}
+                style={styles.row}
+                accessibilityRole="button"
+                accessibilityState={{expanded: open}}
+                accessibilityLabel={`Permissions: ${summary}`}>
+                <View style={styles.flex}>
+                    <Text style={[styles.title, {color: text}]}>{open ? 'Hide permissions' : 'Show permissions'}</Text>
+                    <Text style={[styles.why, missing ? styles.summaryMissing : styles.summaryOk]}>{summary}</Text>
+                </View>
+                <Text style={[styles.chevron, {color: linkColor(isDark)}]}>{open ? '▴' : '▾'}</Text>
+            </TouchableOpacity>
+            {open && rows.map(r => (
+                <View key={r.key} style={[styles.row, styles.divider]}>
                     <View style={styles.flex}>
                         <Text style={[styles.title, {color: text}]}>{r.title}</Text>
                         <Text style={[styles.why, {color: muted}]}>{r.why}</Text>
@@ -140,4 +158,7 @@ const styles = StyleSheet.create({
     },
     fixRequired: {backgroundColor: ACTION_BUTTON_BG, borderColor: ACTION_BUTTON_BG},
     fixText: {fontWeight: '600', fontSize: 13},
+    summaryOk: {color: '#2E7D32', fontWeight: '600'},
+    summaryMissing: {color: ORANGE, fontWeight: '600'},
+    chevron: {fontSize: 18, marginLeft: 12},
 });

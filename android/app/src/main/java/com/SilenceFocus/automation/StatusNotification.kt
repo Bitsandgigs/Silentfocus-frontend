@@ -36,6 +36,7 @@ object StatusNotification {
         val by = when (source) {
             RuleSource.MANUAL -> "Turned on manually"
             RuleSource.ZONE -> ruleName?.let { "Silent Zone: $it" } ?: "Silent Zone"
+            RuleSource.PLACE -> ruleName?.let { "Public place: $it" } ?: "Public place"
             RuleSource.SCHEDULE -> ruleName?.let { "Schedule: $it" } ?: "Schedule"
             // Calendar event titles are never shown.
             RuleSource.CALENDAR -> "Calendar event"

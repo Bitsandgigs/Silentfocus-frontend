@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -47,10 +47,20 @@ const AutoReplyScreen = () => {
     const [defaultDraft, setDefaultDraft] = useState(DEFAULT_REPLY);
     const [zoneDrafts, setZoneDrafts] = useState({});
     const [dirty, setDirty] = useState(false);
+    // 'saving' | 'saved' | null: feedback for "Save replies" (it used to just grey out).
+    const [saveStatus, setSaveStatus] = useState(null);
+    // Read inside async callbacks: a sync that finishes while the user is
+    // typing must not reset their unsaved text.
+    const dirtyRef = useRef(false);
+    const markDirty = () => {
+        dirtyRef.current = true;
+        setDirty(true);
+        setSaveStatus(null);
+    };
 
     const applyState = useCallback((s, resetDrafts) => {
         setState(s);
-        if (resetDrafts) {
+        if (resetDrafts && !dirtyRef.current) {
             setDefaultDraft(s.autoReply.defaultTemplate);
             setZoneDrafts(s.autoReply.zoneTemplates);
             setDirty(false);
@@ -94,29 +104,17 @@ const AutoReplyScreen = () => {
     };
 
     const saveTemplates = async () => {
+        setSaveStatus('saving');
         try {
-            applyState(
-                await setAutoReplySettings({defaultTemplate: defaultDraft, zoneTemplates: zoneDrafts}),
-                true,
-            );
+            const next = await setAutoReplySettings({defaultTemplate: defaultDraft, zoneTemplates: zoneDrafts});
+            dirtyRef.current = false;
+            applyState(next, true);
+            setSaveStatus('saved');
             pushAutoReply({fetchZones: fetchZonesForSync}).catch(() => {});
         } catch (e) {
+            setSaveStatus(null);
             Alert.alert('Silent Focus', 'Your replies could not be saved. Please try again.');
         }
-    };
-
-    const onToggleEnabled = v => {
-        if (v && !state.notificationAccess) {
-            Alert.alert(
-                'Notification access needed',
-                'Auto reply works through the reply button in messaging notifications, so Silent Focus needs notification access. Message text is never stored or uploaded.',
-                [
-                    {text: 'Not now', style: 'cancel'},
-                    {text: 'Open settings', onPress: openNotificationAccessSettings},
-                ],
-            );
-        }
-        update({enabled: v});
     };
 
     return (
@@ -165,22 +163,6 @@ const AutoReplyScreen = () => {
 
                     <View style={[styles.row, {backgroundColor: card}]}>
                         <View style={styles.flex}>
-                            <Text style={[styles.rowTitle, {color: text}]}>Auto reply</Text>
-                            <Text style={[styles.body, {color: muted}]}>
-                                Reply automatically while Silent Focus is on.
-                            </Text>
-                        </View>
-                        <Switch
-                            value={ar.enabled}
-                            onValueChange={onToggleEnabled}
-                            trackColor={{false: '#444', true: '#F08A2C'}}
-                            thumbColor="#fff"
-                            accessibilityLabel="Auto reply"
-                        />
-                    </View>
-
-                    <View style={[styles.row, {backgroundColor: card}]}>
-                        <View style={styles.flex}>
                             <Text style={[styles.rowTitle, {color: text}]}>Reply to messaging apps</Text>
                             <Text style={[styles.body, {color: muted}]}>
                                 Works with apps whose notifications have a Reply button (for example WhatsApp,
@@ -223,7 +205,7 @@ const AutoReplyScreen = () => {
                         value={defaultDraft}
                         onChangeText={t => {
                             setDefaultDraft(t);
-                            setDirty(true);
+                            markDirty();
                         }}
                         placeholder={DEFAULT_REPLY}
                         placeholderTextColor={muted}
@@ -246,7 +228,7 @@ const AutoReplyScreen = () => {
                                     value={zoneDrafts[z.id] || ''}
                                     onChangeText={t => {
                                         setZoneDrafts(prev => ({...prev, [z.id]: t}));
-                                        setDirty(true);
+                                        markDirty();
                                     }}
                                     placeholder="Uses the default reply"
                                     placeholderTextColor={muted}
@@ -259,12 +241,20 @@ const AutoReplyScreen = () => {
                     )}
 
                     <TouchableOpacity
-                        style={[styles.saveButton, !dirty && styles.disabled]}
-                        disabled={!dirty}
+                        style={[styles.saveButton, (!dirty || saveStatus === 'saving') && styles.disabled]}
+                        disabled={!dirty || saveStatus === 'saving'}
                         onPress={saveTemplates}
+                        testID="auto-reply-save"
                         accessibilityRole="button">
-                        <Text style={styles.saveText}>Save replies</Text>
+                        <Text style={styles.saveText}>
+                            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' && !dirty ? 'Saved ✓' : 'Save replies'}
+                        </Text>
                     </TouchableOpacity>
+                    {saveStatus === 'saved' && !dirty && (
+                        <Text style={[styles.footnote, {color: muted}]} accessibilityLiveRegion="polite">
+                            Replies saved on this phone.
+                        </Text>
+                    )}
 
                     <Text style={[styles.section, {color: text}]}>SMS AND MISSED CALLS</Text>
                     <Text style={[styles.body, {color: muted}]}>

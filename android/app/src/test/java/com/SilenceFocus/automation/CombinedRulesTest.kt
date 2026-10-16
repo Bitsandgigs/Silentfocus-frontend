@@ -308,4 +308,28 @@ class CombinedRulesTest {
         assertEquals(Boundary(at(28, 11), BoundaryKind.START), decide(w, at(28, 10)).nextBoundary)
         assertEquals(Boundary(at(28, 11, 30), BoundaryKind.END), decide(w, at(28, 11, 10)).nextBoundary)
     }
+
+    @Test
+    fun nextStartAcrossCalendarAndSchedule() {
+        val w = World(
+            schedules = listOf(schedule("s", "18:00", "19:00")),
+            events = listOf(event("c:1:1", at(28, 9), at(28, 11)), event("c:1:2", at(28, 14), at(28, 15))),
+        )
+        // Inside the 9-11 event: the next boundary is its END, the next start is 14:00.
+        val d = decide(w, at(28, 10))
+        assertEquals(BoundaryKind.END, d.nextBoundary?.kind)
+        assertEquals(at(28, 14), d.nextStart?.atMillis)
+        assertEquals(RuleSource.CALENDAR, d.nextStart?.source)
+        // Calendar off: only the schedule counts.
+        val off = decide(w.copy(settings = AutomationSettings(locationEnabled = true, calendarEnabled = false)), at(28, 10))
+        assertEquals(at(28, 18), off.nextStart?.atMillis)
+        assertEquals(RuleSource.SCHEDULE, off.nextStart?.source)
+    }
+
+    @Test
+    fun zonesHaveNoNextStart() {
+        val d = decide(World(zones = listOf(zone("1")), presence = mapOf("1" to at(28, 9))), at(28, 10))
+        assertTrue(d.silent)
+        assertNull(d.nextStart)
+    }
 }

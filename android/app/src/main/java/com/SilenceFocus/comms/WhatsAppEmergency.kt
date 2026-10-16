@@ -174,8 +174,8 @@ object WhatsAppEmergency {
      * that the collapsed notification (Samsung shows one line) already says
      * what is happening; the title alone carries the meaning.
      */
-    fun publicText(kind: Kind, app: String): Pair<String, String> = privateText(kind, app, null, 0).let { (t, x) ->
-        if (kind == Kind.URGENT) t to "Someone is calling repeatedly." else t to x
+    fun publicText(kind: Kind, app: String, missed: Boolean = false): Pair<String, String> = privateText(kind, app, null, 0, missed).let { (t, x) ->
+        if (kind == Kind.URGENT) t to (if (missed) "Someone called repeatedly." else "Someone is calling repeatedly.") else t to x
     }
 
     /**
@@ -186,9 +186,12 @@ object WhatsAppEmergency {
      * for the call site; the name stays in the local Activity Center.
      */
     @Suppress("UNUSED_PARAMETER")
-    fun privateText(kind: Kind, app: String, who: String?, repeatCount: Int): Pair<String, String> = when (kind) {
-        Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."
-        Kind.URGENT -> "Urgent call on $app" to "Someone called $repeatCount times."
+    fun privateText(kind: Kind, app: String, who: String?, repeatCount: Int, missed: Boolean = false): Pair<String, String> = when {
+        // WhatsApp didn't ring (it saw Do Not Disturb): the call is already over.
+        missed && kind == Kind.EMERGENCY -> "Missed emergency call on $app" to "Your emergency contact just called. Call them back."
+        missed -> "Urgent missed calls on $app" to "Someone called $repeatCount times. Call them back."
+        kind == Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."
+        else -> "Urgent call on $app" to "Someone called $repeatCount times."
     }
 
     /** The plain notice used when WhatsApp alerts are switched off (no sound). */

@@ -78,6 +78,35 @@ export const calendarIssue = state => {
     };
 };
 
+const PAUSED_LABELS = {
+    SCHEDULE: 'Schedule',
+    CALENDAR: 'Calendar event',
+    ZONE: 'Silent Zone',
+    PLACE: 'Public place',
+};
+
+// What the user's manual OFF paused, named by its real source.
+const pausedDetail = (state, now) => {
+    const sources = [
+        ...new Set((state.suppressedRules || []).map(r => r.source)),
+    ];
+    const label =
+        sources.length === 1 && PAUSED_LABELS[sources[0]]
+            ? PAUSED_LABELS[sources[0]]
+            : 'Automatic silence';
+    const until = state.manualOverride?.until;
+    if (until) {
+        return `${label} paused until ${formatWhen(until, now)}`;
+    }
+    if (sources.length === 1 && sources[0] === 'ZONE') {
+        return 'Silent Zone paused until you leave it';
+    }
+    if (sources.length === 1 && sources[0] === 'PLACE') {
+        return 'Public place paused until you leave it';
+    }
+    return `${label} paused`;
+};
+
 export const describeEngineState = (state, now = Date.now()) => {
     if (!state) {
         return {
@@ -108,6 +137,11 @@ export const describeEngineState = (state, now = Date.now()) => {
                 r => r.source === 'ZONE',
             );
             detail = zone?.name ? `Silent Zone: ${zone.name}` : 'Silent Zone';
+        } else if (state.source === 'PLACE') {
+            const place = (state.activeRules || []).find(
+                r => r.source === 'PLACE',
+            );
+            detail = place?.name ? `Public place: ${place.name}` : 'Public place';
         } else if (state.source === 'SCHEDULE' || state.source === 'CALENDAR') {
             const end = silenceEndsAt(state);
             const label =
@@ -118,16 +152,18 @@ export const describeEngineState = (state, now = Date.now()) => {
         title = 'Silent Focus cannot run';
         detail = 'Do Not Disturb access is needed';
     } else if ((state.suppressedRules || []).length > 0) {
-        const until = state.manualOverride?.until;
-        detail = until
-            ? `Schedule paused until ${formatWhen(until, now)}`
-            : 'Schedule paused';
+        detail = pausedDetail(state, now);
     }
 
+    // The next window start, even when the very next engine boundary is the
+    // end of a paused/running window (older engines only sent nextTransition).
     let next = null;
     const nt = state.nextTransition;
-    if (nt?.at && nt.kind === 'START' && !state.silentActive) {
-        next = `Next automatic silence ${formatWhen(nt.at, now)}`;
+    const nextAt =
+        state.nextSilenceStart?.at ||
+        (nt?.kind === 'START' ? nt.at : null);
+    if (nextAt && nextAt > now && !state.silentActive) {
+        next = `Next automatic silence ${formatWhen(nextAt, now)}`;
     }
 
     return {
