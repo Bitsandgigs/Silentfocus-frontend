@@ -111,7 +111,8 @@ class EngineStore(context: Context) {
             calendarBeforeMinutes = prefs.getInt(KEY_SET_BEFORE, 0),
             calendarAfterMinutes = prefs.getInt(KEY_SET_AFTER, 0),
             ignoreAllDayEvents = prefs.getBoolean(KEY_SET_IGNORE_ALL_DAY, true),
-            publicPlacesEnabled = prefs.getBoolean(KEY_SET_PUBLIC_PLACES, false),
+            // Permanently disabled: never revive an older true preference.
+            publicPlacesEnabled = false,
         )
         set(value) = prefs.edit()
             .putBoolean(KEY_SET_LOCATION, value.locationEnabled)
@@ -119,10 +120,28 @@ class EngineStore(context: Context) {
             .putInt(KEY_SET_BEFORE, value.calendarBeforeMinutes)
             .putInt(KEY_SET_AFTER, value.calendarAfterMinutes)
             .putBoolean(KEY_SET_IGNORE_ALL_DAY, value.ignoreAllDayEvents)
-            .putBoolean(KEY_SET_PUBLIC_PLACES, value.publicPlacesEnabled)
+            .remove(KEY_SET_PUBLIC_PLACES)
             .apply()
 
-    // ---- Cached device-calendar occurrences (no titles or other details)
+    /**
+     * Idempotent upgrade cleanup for the removed automatic Public Places
+     * feature. History is intentionally not touched.
+     */
+    fun clearPublicPlacesState() {
+        prefs.edit()
+            .remove(KEY_SET_PUBLIC_PLACES)
+            .remove(KEY_PLACES)
+            .remove(KEY_PLACE_PRESENCE)
+            .remove(KEY_PLACE_SEARCH_AT)
+            .remove(KEY_PLACE_SEARCH_LAT)
+            .remove(KEY_PLACE_SEARCH_LNG)
+            .remove(KEY_PLACE_QUOTA)
+            .remove(KEY_PLACE_STATUS)
+            .remove(KEY_PLACE_LAST_ATTEMPT)
+            .apply()
+    }
+
+    // ---- Cached device-calendar occurrences (title stays device-local)
 
     var calendarEvents: List<CalendarEvent>
         get() = parseEvents(prefs.getString(KEY_CAL_EVENTS, null))
@@ -163,6 +182,16 @@ class EngineStore(context: Context) {
             .putLong(KEY_OVERRIDE_UNTIL, value.untilMillis ?: -1L)
             .putStringSet(KEY_OVERRIDE_WINDOWS, value.suppressedWindows)
             .apply()
+
+    /**
+     * Wall-clock anchor for the current explicit Manual session.  It is kept
+     * separately from `ownedSince`: Manual may take ownership part-way
+     * through an automatic session.  SharedPreferences survives a JS/native
+     * process restart and a reboot.
+     */
+    var manualSessionStartedAt: Long
+        get() = prefs.getLong(KEY_MANUAL_SESSION_STARTED, 0L)
+        set(value) = prefs.edit().putLong(KEY_MANUAL_SESSION_STARTED, value).apply()
 
     // ---- Device ownership / state to restore
 
@@ -255,6 +284,20 @@ class EngineStore(context: Context) {
     }
 
     /** The server acknowledged these entries (read back by JS): retention may drop them now. */
+    /** Changes the journal entry [id] in place (local detail such as a call's outcome); false if gone. */
+    fun updateEvent(id: String, change: (JSONObject) -> Unit): Boolean = synchronized(JOURNAL_LOCK) {
+        val events = recentEvents()
+        for (i in 0 until events.length()) {
+            val e = events.optJSONObject(i) ?: continue
+            if (e.optString("id") == id) {
+                change(e)
+                prefs.edit().putString(KEY_EVENTS, events.toString()).apply()
+                return@synchronized true
+            }
+        }
+        false
+    }
+
     fun markEventsAcknowledged(ids: Set<String>) = synchronized(JOURNAL_LOCK) {
         if (ids.isEmpty()) return@synchronized
         val events = recentEvents()
@@ -302,6 +345,15 @@ class EngineStore(context: Context) {
         set(value) = prefs.edit().putLong(KEY_HISTORY_OWNER, value).apply()
 
     /**
+     * The signed-in account whose one-time schedules automate (OnceScheduleStore).
+     * Set when the signed-in app loads its schedules; cleared with the rules
+     * on logout or session expiry.
+     */
+    var scheduleOwner: Long
+        get() = prefs.getLong(KEY_SCHEDULE_OWNER, 0L)
+        set(value) = prefs.edit().putLong(KEY_SCHEDULE_OWNER, value).apply()
+
+    /**
      * The journal as outbox entries (original JSON kept, minus the local-only
      * caller/sender names and message times, which an outbox never needs).
      */
@@ -334,6 +386,7 @@ class EngineStore(context: Context) {
     private fun clearUserData() {
         prefs.edit()
             .remove(KEY_SCHEDULES)
+            .remove(KEY_SCHEDULE_OWNER)
             .remove(KEY_ZONES)
             .remove(KEY_PRESENCE)
             .remove(KEY_GEOFENCE_STATUS)
@@ -358,6 +411,7 @@ class EngineStore(context: Context) {
             .remove(KEY_CAL_LAST_SYNC)
             .remove(KEY_CAL_SELECTION)
             .remove(KEY_OVERRIDE_MODE)
+            .remove(KEY_MANUAL_SESSION_STARTED)
             .remove(KEY_OVERRIDE_UNTIL)
             .remove(KEY_OVERRIDE_WINDOWS)
             .remove(KEY_RULE_WINDOWS)
@@ -371,7 +425,9 @@ class EngineStore(context: Context) {
         private const val PREFS = "silent_focus_engine"
         private const val KEY_HISTORY_OWNER = "history_owner"
         private const val KEY_SCHEDULES = "schedules"
+        private const val KEY_SCHEDULE_OWNER = "schedule_owner"
         private const val KEY_OVERRIDE_MODE = "override_mode"
+        private const val KEY_MANUAL_SESSION_STARTED = "manual_session_started"
         private const val KEY_OVERRIDE_UNTIL = "override_until"
         private const val KEY_OVERRIDE_WINDOWS = "override_windows"
         private const val KEY_OWNED = "owned"
@@ -480,7 +536,9 @@ class EngineStore(context: Context) {
 
         fun eventsToJson(events: List<CalendarEvent>): JSONArray = JSONArray().apply {
             events.forEach { e ->
-                put(JSONObject().put("k", e.key).put("b", e.begin).put("e", e.end).put("a", e.allDay))
+                put(JSONObject().put("k", e.key).put("b", e.begin).put("e", e.end).put("a", e.allDay).apply {
+                    e.title?.let { put("t", it) }
+                })
             }
         }
 
@@ -488,7 +546,10 @@ class EngineStore(context: Context) {
             val arr = json?.let { runCatching { JSONArray(it) }.getOrNull() } ?: return emptyList()
             return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                CalendarEvent(o.optString("k"), o.optLong("b"), o.optLong("e"), o.optBoolean("a"))
+                CalendarEvent(
+                    o.optString("k"), o.optLong("b"), o.optLong("e"), o.optBoolean("a"),
+                    CalendarTitles.normalize(if (o.has("t")) o.optString("t") else null),
+                )
                     .takeIf { it.key.isNotEmpty() }
             }
         }

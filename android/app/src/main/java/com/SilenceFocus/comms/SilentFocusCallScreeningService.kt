@@ -55,7 +55,10 @@ class SilentFocusCallScreeningService : CallScreeningService() {
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
-        when (val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
+        val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+        // #5: Activity rows for calls screening didn't see, answered / missed.
+        runCatching { CallBreakthroughs.onPhoneState(context, state) }
+        when (state) {
             TelephonyManager.EXTRA_STATE_IDLE, TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                 CallBreakthroughs.onRingingStopped(context)
                 // Alert Only (no-op unless a SIM alert is showing).

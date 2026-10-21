@@ -15,6 +15,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import LogoutIcon from '../assets/svgs/Logout';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useNavigation} from '@react-navigation/native';
 import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
@@ -48,6 +49,7 @@ import {describeSelection, getDeviceCalendars, saveCalendarSelection} from '../u
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
 const ProfileScreen = () => {
+    const navigation = useNavigation();
     // Round 3 (#4): which of the phone's calendars are used (summary line).
     const [calendarSummary, setCalendarSummary] = useState(null);
     const [isCalendarSynced, setIsCalendarSynced] = useState(false);
@@ -566,13 +568,13 @@ const ProfileScreen = () => {
 
                 {/* Legal */}
                 <Section title="Legal" cardColor={card}>
-                    <View style={styles.fieldRow}>
+                    <Pressable style={styles.fieldRow} onPress={() => navigation.navigate('LegalScreen', {document: 'terms'})} accessibilityRole="button">
                         <Field label="Terms of Service" textColor={text} />
-                    </View>
+                    </Pressable>
                     <Separator divider={divider} />
-                    <View style={styles.fieldRow}>
+                    <Pressable style={styles.fieldRow} onPress={() => navigation.navigate('LegalScreen', {document: 'privacy'})} accessibilityRole="button">
                         <Field label="Privacy Policy" textColor={text} />
-                    </View>
+                    </Pressable>
                 </Section>
 
                 {/* Account */}

@@ -52,7 +52,24 @@ describe('sendFeedback', () => {
             {message: 'Hello'},
             {transport: transport({statusCode: 422, data: {status: '0', message: 'Too long'}}), device},
         );
-        expect(failed).toEqual({ok: false, reason: 'server', message: 'Too long'});
+        expect(failed).toEqual({ok: false, reason: 'validation', message: 'Too long'});
+    });
+
+    test('does not send a client email, including from legacy callers', async () => {
+        await sendFeedback(
+            {category: 'idea', message: 'Add a quiet-hours shortcut', email: ' User@Example.COM '},
+            {transport: transport(okResponse), device},
+        );
+        expect(calls[0][1]).not.toHaveProperty('email');
+    });
+
+    test('distinguishes an expired session', async () => {
+        expect(
+            await sendFeedback(
+                {message: 'Hello'},
+                {transport: transport({statusCode: 401, isAuthError: true, data: {message: 'Unauthenticated.'}}), device},
+            ),
+        ).toEqual({ok: false, reason: 'auth', message: 'Unauthenticated.'});
     });
 });
 
@@ -61,5 +78,11 @@ describe('Accounts layout', () => {
         const src = fs.readFileSync(path.join(__dirname, '../src/screens/ProfileScreen.js'), 'utf8');
         const order = ['title="Privacy & Data"', 'title="Feedback"', '<FeedbackForm />', 'title="Legal"'].map(t => src.indexOf(t));
         expect(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1]))).toBe(true);
+    });
+
+    test('does not include a client email field in the feedback form', () => {
+        const src = fs.readFileSync(path.join(__dirname, '../src/componentes/FeedbackForm.js'), 'utf8');
+        expect(src).not.toContain('Your email');
+        expect(src).not.toContain('name@example.com');
     });
 });

@@ -129,9 +129,13 @@ object WhatsAppEmergency {
         val numberShown = exposed.isNotEmpty() || ids.contactNumbers.isNotEmpty()
         fun result(m: Match?, wouldMatch: Boolean = false) = Identity(m, numberShown, names.isNotEmpty(), wouldMatch)
         if (!enabled || contacts.isEmpty()) return result(null)
-        exposed.forEach { n -> contacts.firstOrNull { PhoneNumbers.sameNumber(it.number, n) }?.let { return result(Match(it, Method.NUMBER)) } }
+        val numberMatches = exposed.flatMap { n -> contacts.filter { PhoneNumbers.sameNumber(it.number, n) } }.distinctBy { it.id }
+        if (numberMatches.size == 1) return result(Match(numberMatches.single(), Method.NUMBER))
+        if (numberMatches.size > 1) return result(null)
         lookupKey(ids.personUri)?.let { key -> contacts.firstOrNull { it.id == key }?.let { return result(Match(it, Method.CONTACT)) } }
-        ids.contactNumbers.forEach { n -> contacts.firstOrNull { PhoneNumbers.sameNumber(it.number, n) }?.let { return result(Match(it, Method.CONTACT)) } }
+        val contactMatches = ids.contactNumbers.flatMap { n -> contacts.filter { PhoneNumbers.sameNumber(it.number, n) } }.distinctBy { it.id }
+        if (contactMatches.size == 1) return result(Match(contactMatches.single(), Method.CONTACT))
+        if (contactMatches.size > 1) return result(null)
         // A known number that isn't an emergency contact's: never override it by name.
         if (numberShown) return result(null)
         val byName = names.asSequence().mapNotNull { shown ->
@@ -179,20 +183,39 @@ object WhatsAppEmergency {
     }
 
     /**
-     * Alert text. Round 4: never a name or number, locked or not - Android
-     * shows "private" notification content on the lock screen whenever the
-     * user's lock-screen setting allows sensitive content (the default), so
-     * only leaving the name out keeps it off the lock screen. [who] is kept
-     * for the call site; the name stays in the local Activity Center.
+     * Alert text (the notification's private version). Client feedback: an
+     * emergency contact's alert names the caller - with many emergency
+     * contacts "your emergency contact" doesn't say who. [who] is the user's
+     * own saved name for the matched contact (or, without one, the name
+     * WhatsApp showed for that matched caller); without a usable name the
+     * generic wording is used. The lock-screen (public) version never has a
+     * name: Android shows it instead whenever the user's lock-screen setting
+     * hides sensitive content. Urgent repeat callers stay unnamed (they are
+     * not saved contacts, so a shown name can't be confirmed).
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun privateText(kind: Kind, app: String, who: String?, repeatCount: Int, missed: Boolean = false): Pair<String, String> = when {
-        // WhatsApp didn't ring (it saw Do Not Disturb): the call is already over.
-        missed && kind == Kind.EMERGENCY -> "Missed emergency call on $app" to "Your emergency contact just called. Call them back."
-        missed -> "Urgent missed calls on $app" to "Someone called $repeatCount times. Call them back."
-        kind == Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."
-        else -> "Urgent call on $app" to "Someone called $repeatCount times."
+    fun privateText(kind: Kind, app: String, who: String?, repeatCount: Int, missed: Boolean = false): Pair<String, String> {
+        val name = if (kind == Kind.EMERGENCY) displayName(who) else null
+        return when {
+            // WhatsApp didn't ring (it saw Do Not Disturb): the call is already over.
+            missed && kind == Kind.EMERGENCY -> missedEmergencyTitle(app) to
+                (name?.let { "$it called you on $app." } ?: "Your emergency contact just called. Call them back.")
+            missed -> "Urgent missed calls on $app" to "Someone called $repeatCount times. Call them back."
+            kind == Kind.EMERGENCY -> "Emergency call on $app" to (name?.let { "$it is calling you on $app." } ?: "Your emergency contact is calling.")
+            else -> "Urgent call on $app" to "Someone called $repeatCount times."
+        }
     }
+
+    /** "Missed emergency WhatsApp call" - fits a collapsed Samsung notification. */
+    fun missedEmergencyTitle(app: String) = "Missed emergency $app call"
+
+    /** A contact name safe to show: trimmed, single-spaced, not a number, at most [MAX_NAME] characters. */
+    fun displayName(raw: String?): String? {
+        val v = visible(raw)?.takeIf { it.isNotEmpty() } ?: return null
+        if (PHONE_LIKE.matches(v)) return null
+        return if (v.length <= MAX_NAME) v else v.take(MAX_NAME - 1).trimEnd() + "\u2026"
+    }
+
+    private const val MAX_NAME = 40
 
     /** The plain notice used when WhatsApp alerts are switched off (no sound). */
     fun repeatNoticeText(app: String, count: Int): Pair<String, String> =

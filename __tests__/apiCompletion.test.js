@@ -45,6 +45,7 @@ describe('activity/session upload mapping', () => {
         expect(msg.sender_name).toBe('WhatsApp');
         expect(JSON.stringify(msg)).not.toContain('secret');
         expect(toServerLog(ID, ev('AUTO_REPLY_SENT', NOW)).type).toBe('auto_response');
+        expect(toServerLog(ID, ev('AUTO_REPLY_SENT', NOW)).content).toBe('Reply action accepted');
         // Automation and failed/skipped replies are not uploaded as logs.
         ['SILENCE_STARTED', 'ZONE_ENTER', 'AUTO_REPLY_FAILED', 'AUTO_REPLY_SKIPPED'].forEach(t =>
             expect(toServerLog(ID, ev(t, NOW))).toBeNull(),

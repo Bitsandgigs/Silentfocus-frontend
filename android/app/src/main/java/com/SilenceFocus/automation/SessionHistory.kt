@@ -19,6 +19,8 @@ data class SilenceSession(
     /** Every source that was active at some point during the session. */
     val sources: Set<String> = emptySet(),
     val zoneNames: Set<String> = emptySet(),
+    /** Selected CalendarContract.Instances title, retained only locally. */
+    val calendarEventTitle: String? = null,
     val emergencyBreakthroughs: Int = 0,
     val urgentBreakthroughs: Int = 0,
     val callsSilenced: Int = 0,
@@ -56,10 +58,15 @@ object SessionTracker {
     ): List<SilenceSession> {
         val open = sessions.lastOrNull()?.takeIf { it.end == null }
         if (!active) {
-            return if (open == null) sessions else sessions.dropLast(1) + open.copy(end = now)
+            // Wall-clock corrections can move `now` behind a session that
+            // was opened before the correction. Never persist an impossible
+            // negative interval in Session History.
+            return if (open == null) sessions else sessions.dropLast(1) + open.copy(end = maxOf(open.start, now))
         }
         val start = if (since > 0) since else now
         val zones = rules.filter { it.source == RuleSource.ZONE || it.source == RuleSource.PLACE }.mapNotNull { it.name?.takeIf(String::isNotBlank) }
+        val calendarTitle = rules.firstOrNull { it.source == RuleSource.CALENDAR }
+            ?.name?.trim()?.takeIf { it.isNotEmpty() }
         val srcs = (rules.map { it.source.name } + listOfNotNull(source)).toSet()
         if (open == null || (since > 0 && open.start != since)) {
             // A different activation than the open one (e.g. the end was
@@ -72,6 +79,7 @@ object SessionTracker {
                     primarySource = source,
                     sources = srcs,
                     zoneNames = zones.toSet(),
+                    calendarEventTitle = calendarTitle,
                 ),
                 now,
             )
@@ -79,9 +87,21 @@ object SessionTracker {
         val updated = open.copy(
             sources = open.sources + srcs,
             zoneNames = (open.zoneNames + zones).take(MAX_ZONE_NAMES).toSet(),
+            calendarEventTitle = open.calendarEventTitle ?: calendarTitle,
             primarySource = open.primarySource ?: source,
         )
         return if (updated == open) sessions else sessions.dropLast(1) + updated
+    }
+
+    /**
+     * When the clock jumps forward past a finite rule window, close at the
+     * last expected end rather than attributing the skipped wall-clock time
+     * to Silent Focus. Open-ended sources (zones/manual) still close at now.
+     */
+    fun closeTime(now: Long, clockChanged: Boolean, previousWindowEnds: List<Long?>): Long {
+        if (!clockChanged || previousWindowEnds.isEmpty() || previousWindowEnds.any { it == null }) return now
+        val expected = previousWindowEnds.filterNotNull().maxOrNull() ?: return now
+        return if (expected <= now) expected else now
     }
 
     /** Adds to the open session's counters; ignored when nothing is open. */
@@ -164,6 +184,7 @@ class SessionStore(private val kv: KeyValue) {
         s.primarySource.orEmpty(),
         s.sources.joinToString(","),
         s.zoneNames.joinToString("\u001D") { it.replace("\u001D", "") },
+        s.calendarEventTitle?.replace("\u001D", "") ?: "",
         s.emergencyBreakthroughs.toString(),
         s.urgentBreakthroughs.toString(),
         s.callsSilenced.toString(),
@@ -181,13 +202,16 @@ class SessionStore(private val kv: KeyValue) {
                 primarySource = f[2].ifEmpty { null },
                 sources = f[3].split(',').filter { it.isNotEmpty() }.toSet(),
                 zoneNames = f[4].split('\u001D').filter { it.isNotEmpty() }.toSet(),
-                emergencyBreakthroughs = f[5].toInt(),
-                urgentBreakthroughs = f[6].toInt(),
-                callsSilenced = f[7].toInt(),
-                messagesReceived = f[8].toInt(),
-                autoRepliesSent = f[9].toInt(),
+                // v2 added calendarEventTitle at index 5.  Older persisted
+                // records remain readable without fabricated titles.
+                calendarEventTitle = if (f.size >= 12) f[5].ifEmpty { null } else null,
+                emergencyBreakthroughs = f[if (f.size >= 12) 6 else 5].toInt(),
+                urgentBreakthroughs = f[if (f.size >= 12) 7 else 6].toInt(),
+                callsSilenced = f[if (f.size >= 12) 8 else 7].toInt(),
+                messagesReceived = f[if (f.size >= 12) 9 else 8].toInt(),
+                autoRepliesSent = f[if (f.size >= 12) 10 else 9].toInt(),
                 // Absent in records written before this field existed.
-                ackedEnd = f.getOrNull(10)?.toLongOrNull(),
+                ackedEnd = f.getOrNull(if (f.size >= 12) 11 else 10)?.toLongOrNull(),
             )
         }.getOrNull()
     }

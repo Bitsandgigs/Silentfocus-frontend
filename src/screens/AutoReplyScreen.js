@@ -150,7 +150,8 @@ const AutoReplyScreen = () => {
                             <Text style={[styles.bannerTitle, {color: text}]}>Notification access is off</Text>
                             <Text style={[styles.body, {color: muted}]}>
                                 Needed to see messages that arrive while Silent Focus is on and to reply from their
-                                notification.
+                                notification. Replies cannot run while access is off. Restore access, then review the
+                                Auto Reply switch in Control Center.
                             </Text>
                             <TouchableOpacity
                                 style={styles.smallButton}
@@ -166,7 +167,8 @@ const AutoReplyScreen = () => {
                             <Text style={[styles.rowTitle, {color: text}]}>Reply to messaging apps</Text>
                             <Text style={[styles.body, {color: muted}]}>
                                 Works with apps whose notifications have a Reply button (for example WhatsApp,
-                                Telegram, Google Messages). Group chats are never auto-replied.
+                                Telegram, Google Messages). Group chats and notifications without enough conversation
+                                information are skipped.
                             </Text>
                         </View>
                         <Switch

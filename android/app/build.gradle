@@ -157,6 +157,7 @@ android {
             buildConfigField "boolean", "SF_WHATSAPP_CALL_PROBE", whatsAppCallProbe ? "true" : "false"
             buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", activityTestHarness ? "true" : "false"
             buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "false"
+            buildConfigField "boolean", "SF_SCHEDULE_QA_MOCK", "false"
         }
         release {
             // Never the debug key: without the upload key configured (see
@@ -174,6 +175,8 @@ android {
             // Always off: the test harness does not exist in release builds.
             buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", "false"
             buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "false"
+            // Emulator QA adapters are never available in production Release.
+            buildConfigField "boolean", "SF_SCHEDULE_QA_MOCK", "false"
             // R8 mapping upload needs Firebase access at build time; CI turns
             // it on with -PSF_UPLOAD_CRASHLYTICS_MAPPING=true.
             firebaseCrashlytics {
@@ -198,6 +201,9 @@ android {
             buildConfigField "boolean", "SF_WHATSAPP_CALL_PROBE", "false"
             buildConfigField "boolean", "SF_ACTIVITY_TEST_HARNESS", "false"
             buildConfigField "boolean", "SF_AUTOMATIC_UPLOADS_DISABLED", "true"
+            // Opt-in, build-time-only schedule API adapter for isolated
+            // emulator CRUD QA. Disabled in normal FieldTest artifacts.
+            buildConfigField "boolean", "SF_SCHEDULE_QA_MOCK", ((project.findProperty("SF_SCHEDULE_QA_MOCK") == "true") ? "true" : "false")
             firebaseCrashlytics {
                 mappingFileUploadEnabled = false
             }

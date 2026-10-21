@@ -109,6 +109,17 @@ describe('API rows -> engine rules', () => {
         });
     });
 
+    test('comma-separated API weekdays retain their weekly meaning', () => {
+        const row = normalizeScheduleRow({
+            schedule_id: 9,
+            from_time: '09:00:00',
+            to_time: '10:00:00',
+            selected_days: 'Monday, Friday',
+            isTimerEnabled: true,
+        }, 0);
+        expect(toEngineSchedules([row])[0].days).toEqual([1, 5]);
+    });
+
     test('calendar-derived rows are not automated in Phase 2', () => {
         const rules = toEngineSchedules(apiRows.map(normalizeScheduleRow));
         expect(rules).toEqual([

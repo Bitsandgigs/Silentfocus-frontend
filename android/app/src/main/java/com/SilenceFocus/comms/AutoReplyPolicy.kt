@@ -43,6 +43,10 @@ data class IncomingMessage(
     val isMessaging: Boolean,
     val hasReplyAction: Boolean,
     val isGroup: Boolean,
+    /** False when the posting app did not provide enough conversation metadata to prove this is one-to-one. */
+    val conversationKnown: Boolean = true,
+    /** Conflicting sender identities in one purported one-to-one notification. */
+    val identityAmbiguous: Boolean = false,
     /** The newest message was written by the device owner (e.g. our own reply echoed back). */
     val fromSelf: Boolean,
     /** The newest message equals one of our templates: likely another auto-responder. */
@@ -79,6 +83,8 @@ object AutoReplyPolicy {
     const val REASON_DISABLED = "DISABLED"
     const val REASON_OWN_MESSAGE = "OWN_MESSAGE"
     const val REASON_GROUP = "GROUP_CONVERSATION"
+    const val REASON_CONVERSATION_UNKNOWN = "CONVERSATION_METADATA_MISSING"
+    const val REASON_AMBIGUOUS_SENDER = "AMBIGUOUS_SENDER"
     const val REASON_LOOP = "POSSIBLE_AUTO_REPLY_LOOP"
     const val REASON_COOLDOWN = "COOLDOWN"
     const val REASON_RATE_LIMIT = "RATE_LIMIT"
@@ -127,6 +133,11 @@ object AutoReplyPolicy {
         val s = settings.sanitized()
         if (!s.enabled || !s.messagingEnabled) return ReplyDecision(ReplyStatus.SKIPPED, REASON_DISABLED)
         if (msg.isGroup) return ReplyDecision(ReplyStatus.SKIPPED, REASON_GROUP)
+        // Fail closed: category=MESSAGE alone does not prove a notification is
+        // a direct conversation, and conflicting participants must never be
+        // resolved by guessing which one should receive the reply.
+        if (!msg.conversationKnown) return ReplyDecision(ReplyStatus.SKIPPED, REASON_CONVERSATION_UNKNOWN)
+        if (msg.identityAmbiguous) return ReplyDecision(ReplyStatus.SKIPPED, REASON_AMBIGUOUS_SENDER)
         if (msg.looksLikeAutoReply) return ReplyDecision(ReplyStatus.SKIPPED, REASON_LOOP)
         val key = msg.senderKey ?: return ReplyDecision(ReplyStatus.SKIPPED, REASON_NO_SENDER)
         marks[key]?.let { mark ->

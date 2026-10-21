@@ -62,6 +62,12 @@ class ActivityTestHarnessReceiver : BroadcastReceiver() {
                 "sim-state" -> simState(ctx)
                 "sim-alert-test" -> gated { "SIM_ALERT " + com.SilenceFocus.comms.EmergencyCallAlert.showSimCall(ctx, com.SilenceFocus.comms.BreakthroughKind.EMERGENCY_CONTACT, 0) }
                 "sim-alert-clear" -> gated { CommsStore(ctx).simAlert?.let { com.SilenceFocus.comms.EmergencyCallAlert.endSimCall(ctx, it, notice = false) }; (ctx.getSystemService(NotificationManager::class.java)).cancel("sim-call", 7311); CommsStore(ctx).simAlert = null; "SIM_ALERT_CLEARED" }
+                "public-place-upgrade" -> publicPlaceUpgrade(ctx, intent.getBooleanExtra("manual", false))
+                "public-place-manual-off" -> {
+                    com.SilenceFocus.automation.AutomationEngine.setManual(ctx, false)
+                    "MANUAL_OFF"
+                }
+                "zone-fixture" -> zoneFixture(ctx, intent.getBooleanExtra("on", false))
                 "wa-reset" -> waReset(ctx)
                 "wa-check-start" -> gated { com.SilenceFocus.comms.WhatsAppCallCheck.start(com.SilenceFocus.comms.WhatsAppCallCheck.store(ctx), System.currentTimeMillis()); "CHECK_STARTED" }
                 "wa-check-read" -> waCheckRead(ctx)
@@ -72,6 +78,48 @@ class ActivityTestHarnessReceiver : BroadcastReceiver() {
         } catch (e: RuntimeException) {
             "ERROR ${e.javaClass.simpleName}"
         }
+    }
+
+    /**
+     * Debug/DUMP-only upgrade fixture for the removed Public Places feature.
+     * It writes the exact legacy private keys, then enters the production
+     * engine. No network or fake external package is involved.
+     */
+    private fun publicPlaceUpgrade(ctx: Context, manual: Boolean): String {
+        if (manual) com.SilenceFocus.automation.AutomationEngine.setManual(ctx, true)
+        val prefs = ctx.getSharedPreferences("silent_focus_engine", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("set_public_places_enabled", true)
+            .putString("public_places", """[{"id":"al-huda","name":"Al-Huda Academy","latitude":12.97,"longitude":77.59}]""")
+            .putString("public_place_presence", """{"al-huda":${System.currentTimeMillis() - 600_000}}""")
+            .putString("public_place_status", "READY")
+            .apply()
+        val state = com.SilenceFocus.automation.AutomationEngine.evaluate(
+            ctx,
+            com.SilenceFocus.automation.TriggerReason.APP_UPDATED,
+        )
+        val stale = listOf(
+            "set_public_places_enabled", "public_places", "public_place_presence", "public_place_status",
+        ).filter(prefs::contains)
+        return JSONObject()
+            .put("silent", state.optBoolean("silentActive"))
+            .put("source", state.optString("source"))
+            .put("staleKeys", stale)
+            .put("publicPlaces", state.optJSONObject("publicPlaces"))
+            .toString()
+    }
+
+    /** Debug-only presence callback equivalent for an already saved zone. */
+    private fun zoneFixture(ctx: Context, on: Boolean): String {
+        val store = EngineStore(ctx)
+        val id = store.zones.firstOrNull { it.enabled }?.id ?: return "NO_ENABLED_ZONE"
+        store.zonePresence = if (on) mapOf(id to System.currentTimeMillis()) else emptyMap()
+        val state = com.SilenceFocus.automation.AutomationEngine.evaluate(
+            ctx,
+            if (on) com.SilenceFocus.automation.TriggerReason.ZONE_ENTER else com.SilenceFocus.automation.TriggerReason.ZONE_EXIT,
+        )
+        return JSONObject().put("silent", state.optBoolean("silentActive"))
+            .put("source", state.optString("source")).put("zone", id).toString()
     }
 
     private fun seed(ctx: Context): String {

@@ -53,12 +53,12 @@ describe('activity model', () => {
         expect(describeEvent(events[1]).title).toBe('Silent Zone activated: Office');
         expect(describeEvent(events[9]).title).toBe('Calendar silence started');
         expect(describeEvent(events[10]).title).toBe('Schedule silence ended');
-        expect(describeEvent(events[6]).title).toBe('Auto reply sent');
+        expect(describeEvent(events[6]).title).toBe('Reply action accepted');
         expect(describeEvent(events[7]).title).toBe('Auto reply failed');
         expect(describeEvent(events[8]).title).toBe('Auto reply not supported');
         // Round 3 (#2): the sender is the title; app and reply outcome stay in the subtitle.
         expect(describeEvent(events[5]).title).toBe('Unknown sender');
-        expect(describeEvent(events[5]).subtitle).toBe('WhatsApp · Auto reply sent');
+        expect(describeEvent(events[5]).subtitle).toBe('WhatsApp · Reply action accepted');
         expect(describeEvent({...events[5], displayName: 'Alice'}).title).toBe('Alice');
         expect(
             describeEvent({type: 'MESSAGE_RECEIVED', replyStatus: 'SKIPPED', detail: 'COOLDOWN'}).subtitle,
@@ -188,6 +188,24 @@ describe('comms wrapper', () => {
         expect(comms.describeUrgentRule({urgentThreshold: 3, urgentWindowMinutes: 15})).toBe(
             'If the same number calls 3 times within 15 minutes while Silent Focus is on, the 3rd call rings.',
         );
+    });
+
+    test('activity wording does not claim notification-action delivery', () => {
+        expect(describeEvent({type: 'AUTO_REPLY_SENT', app: 'WhatsApp', replyStatus: 'SENT'}).title).toBe(
+            'Reply action accepted',
+        );
+        expect(
+            describeEvent({type: 'MESSAGE_RECEIVED', app: 'Chat', replyStatus: 'SKIPPED', detail: 'AMBIGUOUS_SENDER'})
+                .subtitle,
+        ).toContain('Sender identity was ambiguous');
+        expect(
+            describeEvent({
+                type: 'MESSAGE_RECEIVED',
+                app: 'Chat',
+                replyStatus: 'SKIPPED',
+                detail: 'CONVERSATION_METADATA_MISSING',
+            }).subtitle,
+        ).toContain('Conversation type could not be verified');
     });
 
     test('role request and contact removal go to native', async () => {

@@ -161,34 +161,27 @@ object PublicPlaces {
 
     /** Location Mode was switched on, or the app/boot wants places checked. */
     fun onEnabled(context: Context) {
-        val store = EngineStore(context)
-        if (!store.settings.publicPlacesEnabled) return
-        val search = store.placeSearch
-        if (search == null || System.currentTimeMillis() - search.at >= MAX_AGE_MS) scheduleRefresh(context)
-        else if (store.placeStatus == STATUS_OFF) store.placeStatus = STATUS_READY
+        disablePermanently(context)
     }
 
-    /** Location Mode was switched off: stop silencing at places at once; the cache is kept. */
+    /** Location Mode was switched off: remove all obsolete automatic-place state. */
     fun onDisabled(context: Context) {
-        val store = EngineStore(context)
-        store.placePresence = emptyMap()
-        store.placeStatus = STATUS_OFF
+        disablePermanently(context)
+    }
+
+    /** Upgrade-safe cleanup. Never deletes Activity Center or Session History. */
+    fun disablePermanently(context: Context) {
+        EngineStore(context).clearPublicPlacesState()
         cancel(context)
+        // Reconcile Play Services too: this removes obsolete place/area
+        // geofences while re-registering any legitimate Custom Silent Zones.
+        GeofenceRegistrar.sync(context, force = false)
     }
 
     fun scheduleRefresh(context: Context) {
-        val ctx = context.applicationContext
-        val js = ctx.getSystemService(JobScheduler::class.java) ?: return
-        // Re-scheduling a running job would start a second search.
-        if (running.get() || js.getPendingJob(JOB_REFRESH) != null) return
-        runCatching {
-            js.schedule(
-                JobInfo.Builder(JOB_REFRESH, ComponentName(ctx, PublicPlaceRefreshJobService::class.java))
-                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                    .setBackoffCriteria(5 * 60_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
-                    .build(),
-            )
-        }.onFailure { Log.w(TAG, "could not schedule search: ${it.javaClass.simpleName}") }
+        // Permanent fail-closed policy: callers from an older registration
+        // can only clean up, never schedule a Places request.
+        disablePermanently(context)
     }
 
     fun cancel(context: Context) {
@@ -200,19 +193,15 @@ object PublicPlaces {
      * later (network / server trouble), false when done.
      */
     fun refresh(context: Context): Boolean {
-        if (!running.compareAndSet(false, true)) return false
-        try {
-            return search(context)
-        } finally {
-            running.set(false)
-        }
+        disablePermanently(context)
+        return false
     }
 
     @SuppressLint("MissingPermission")
     private fun search(context: Context): Boolean {
         val ctx = context.applicationContext
         val store = EngineStore(ctx)
-        if (!store.settings.publicPlacesEnabled) return false
+        if (!store.settings.publicPlacesActive) return false
         if (!GeofenceRegistrar.hasFine(ctx) || !GeofenceRegistrar.hasBackground(ctx) || !GeofenceRegistrar.isLocationOn(ctx)) {
             store.placeStatus = STATUS_NO_LOCATION
             return false

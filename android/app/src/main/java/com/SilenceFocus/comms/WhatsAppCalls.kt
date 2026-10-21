@@ -406,7 +406,7 @@ object WhatsAppCallRecorder {
                     limit.reason
                 } else {
                     comms.waAlertsSent = limit.history
-                    val who = if (kind == WhatsAppEmergency.Kind.EMERGENCY) match?.contact?.name ?: name else name
+                    val who = if (kind == WhatsAppEmergency.Kind.EMERGENCY) match?.contact?.name?.takeIf { it.isNotBlank() } ?: name else name
                     EmergencyCallAlert.show(ctx, kind, app, input.packageName, who, repeat?.count ?: 0, post.alertRef, input.open, missed = silenced)
                         .also { if (it == EmergencyCallAlert.SENT || it == EmergencyCallAlert.SENT_SILENCED) comms.waAlertPostedAt = now }
                 }

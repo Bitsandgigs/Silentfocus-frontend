@@ -110,13 +110,13 @@ describe('#2 sender names and one-line previews', () => {
         // Unknown sender in a group: the group is never presented as the sender.
         expect(describeEvent(msg({groupName: 'Family'})).title).toBe(UNKNOWN_SENDER);
         expect(describeEvent(msg({app: 'WhatsApp Business', displayName: 'Shop', replyStatus: 'SENT'})).subtitle).toBe(
-            'WhatsApp Business · Auto reply sent',
+            'WhatsApp Business · Reply action accepted',
         );
     });
 
     test('auto reply rows name who was answered', () => {
         expect(describeEvent({type: 'AUTO_REPLY_SENT', app: 'WhatsApp', displayName: 'Rahul'})).toMatchObject({
-            title: 'Auto reply sent',
+            title: 'Reply action accepted',
             subtitle: 'To Rahul · WhatsApp',
         });
     });
@@ -332,10 +332,11 @@ describe('#4 every calendar on the phone', () => {
         expect(picker).toMatch(/disabled=\{!chosen\.length \|\| saving\}/);
     });
 
-    test('native engine reads only the chosen calendars, still only event times', () => {
+    test('native engine reads only the chosen calendars and selected occurrence titles', () => {
         const sync = read('android/app/src/main/java/com/SilenceFocus/automation/CalendarSync.kt');
         expect(sync).toMatch(/query\(ctx, now - LOOKBACK_MS, now \+ LOOKAHEAD_MS, store\.calendarSelection\)/);
-        expect(sync).not.toMatch(/Instances\.TITLE|Events\.TITLE|DESCRIPTION|EVENT_LOCATION/);
+        expect(sync).toContain('CalendarContract.Instances.TITLE');
+        expect(sync).not.toMatch(/CalendarContract\.Events\.TITLE|DESCRIPTION|EVENT_LOCATION/);
         // No calendar writes and no OAuth.
         expect(sync).not.toMatch(/insert\(|update\(|delete\(/);
         expect(read('src/utils/deviceCalendars.js')).not.toMatch(/oauth|googleapis|APICall/i);

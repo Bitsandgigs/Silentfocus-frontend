@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import HomeIcon from '../assets/svgs/HomeIcon';
 import MissedIcon from '../assets/svgs/ActivityIcon';
 import ControlIcon from '../assets/svgs/SettingIcon';
 import ProfileIcon from '../assets/svgs/ProfileIcon';
-import {heightPercentageToDP as hp} from 'react-native-responsive-screen';
 
 const icons = {
   Home: <HomeIcon />,
@@ -33,22 +32,11 @@ const {width} = Dimensions.get('window');
 
 const CustomTabBar = ({state, navigation}) => {
   const insets = useSafeAreaInsets();
-  const [paddingBottom, setPaddingBottom] = useState(hp('2%'));
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  useEffect(() => {
-    if (insets.bottom == 24) {
-      console.log('insets bottom: ', insets.bottom);
-      setPaddingBottom(hp(2)); // More padding for button navigation
-    } else {
-      console.log('insets bottom: ', insets.bottom);
-      setPaddingBottom(hp(2)); // Less padding for gesture navigation
-    }
-  }, []);
-
   return (
-    <View style={[styles.absoluteContainer, {paddingBottom}]}>
+    <View style={[styles.absoluteContainer, {paddingBottom: insets.bottom}]}>
       <View
         style={[
           styles.tabBar,

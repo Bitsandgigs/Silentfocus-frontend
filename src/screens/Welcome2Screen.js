@@ -71,8 +71,8 @@ const WelcomeScreen2 = () => {
           />
 
           <Text style={[styles.description, {color: descColor}]}>
-            Whether you're attending a meeting or entering a quiet zone, your
-            phone will switch to silent mode automatically.
+            Whether you're attending a meeting or entering a Custom Silent
+            Zone, your phone will switch to silent mode automatically.
           </Text>
         </Animated.View>
 

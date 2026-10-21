@@ -22,6 +22,7 @@ import {CALENDAR_SYNC_KEY} from './session';
 import {syncActivityAndSessions} from './serverSync';
 import {syncAutoReply} from './autoResponseSync';
 import Constants from './theme/constants';
+import {FEATURES} from '../config/features';
 
 const MAX_ZONE_PAGES = 20;
 
@@ -69,7 +70,11 @@ export const zonesEnabledFor = (controlModes, deviceConfirmed = false) => {
  * rule (Location AND Custom) - explained, never changed silently.
  * Resolves {zonesActive, legacyRule, locationText, customText, customStatus}.
  */
-export const describeControlModes = ({locationMode, customMode, customModeConfirmed}, deviceConfirmed = false) => {
+export const describeControlModes = (
+    {locationMode, customMode, customModeConfirmed},
+    deviceConfirmed = false,
+    locationModeAvailable = FEATURES.LOCATION_MODE_PUBLIC_PLACES,
+) => {
     const modes = {locationMode, customMode, customModeConfirmed};
     const zonesActive = zonesEnabledFor(modes, deviceConfirmed);
     const hasCustom = customMode !== undefined && customMode !== null;
@@ -84,7 +89,11 @@ export const describeControlModes = ({locationMode, customMode, customModeConfir
     if (zonesActive) {
         customStatus = 'Your Silent Zones are on.';
     } else if (custom && legacyRule && !location) {
-        customStatus = 'Your Silent Zones are paused: on this account they also need Location Mode on.';
+        // Location Mode may be hidden: point to the Custom toggle itself,
+        // which switches the account to independent Custom Mode.
+        customStatus = locationModeAvailable
+            ? 'Your Silent Zones are paused: on this account they also need Location Mode on.'
+            : 'Your Silent Zones are paused. Turn Custom off and on again to start them.';
     } else {
         customStatus = 'Turn on to silence your phone at your Silent Zones.';
     }
@@ -108,7 +117,9 @@ export const buildAutomationSettings = ({
     // Native name kept for stored settings; it gates the user's Silent Zones.
     locationEnabled: zonesEnabledFor(controlModes, deviceCustomConfirmed),
     // Location Mode: silence at libraries and places of worship nearby.
-    publicPlacesEnabled: toBooleanFlag(controlModes?.locationMode),
+    // Permanently removed by client request. Never forward an old backend
+    // or cached Location Mode value to the native engine.
+    publicPlacesEnabled: false,
     calendarEnabled:
         toBooleanFlag(controlModes?.calendarMode) && calendarConnected === true,
     calendarBeforeMinutes: clampMinutes(settings?.meeting_start_before_minutes),

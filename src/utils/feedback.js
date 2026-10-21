@@ -31,9 +31,10 @@ const deviceDetails = () => {
 };
 
 /**
- * Resolves {ok: true} once the server stored it; otherwise {ok: false,
- * reason} with reason 'empty' | 'signedOut' | 'offline' | 'server' (message
- * from the server when it sent one).
+ * Resolves {ok: true, reference} once the server stored it; otherwise
+ * {ok: false, reason} with reason 'empty' | 'signedOut' |
+ * 'offline' | 'auth' | 'validation' | 'server' (message from the server
+ * when it sent one).
  */
 export const sendFeedback = async (
     {category = 'other', message},
@@ -56,8 +57,17 @@ export const sendFeedback = async (
     if (response?.isOffline) {
         return {ok: false, reason: 'offline'};
     }
+    if (response?.isAuthError || response?.statusCode === Constants.apiStatusCode.unAuthorized) {
+        return {ok: false, reason: 'auth', message: response?.data?.message};
+    }
+    if (response?.statusCode === Constants.apiStatusCode.unprocessableContent) {
+        return {ok: false, reason: 'validation', message: response?.data?.message};
+    }
     if (response?.statusCode !== Constants.apiStatusCode.success || response?.data?.status !== '1') {
         return {ok: false, reason: 'server', message: response?.data?.message};
     }
-    return {ok: true};
+    // Keep the legacy success shape when older servers do not return a
+    // reference. Newer servers may include one for support tracking.
+    const reference = response?.data?.result?.reference;
+    return reference ? {ok: true, reference} : {ok: true};
 };

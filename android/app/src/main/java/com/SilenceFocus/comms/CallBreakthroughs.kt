@@ -50,14 +50,15 @@ object CallBreakthroughs {
             alert = if (SimCallAlerts.isDuplicate(comms.simAlert, key, now)) {
                 WhatsAppEmergency.REASON_DUPLICATE
             } else {
-                EmergencyCallAlert.showSimCall(ctx, outcome.breakthrough!!, outcome.repeatCount).also {
-                    comms.simAlert = SimCallAlerts.Record(key, outcome.breakthrough, outcome.repeatCount, now)
+                EmergencyCallAlert.showSimCall(ctx, outcome.breakthrough!!, outcome.repeatCount, outcome.contact?.name).also {
+                    comms.simAlert = SimCallAlerts.Record(key, outcome.breakthrough, outcome.repeatCount, now, outcome.contact?.name)
                 }
             }
         }
 
         if (outcome.record) {
-            engine.appendEvent(JSONObject().apply {
+            val row = JSONObject()
+            engine.appendEvent(row.apply {
                 put("type", when (outcome.breakthrough) {
                     BreakthroughKind.EMERGENCY_CONTACT -> ActivityEvents.EMERGENCY_BREAKTHROUGH
                     BreakthroughKind.URGENT_REPEAT_CALLER -> ActivityEvents.URGENT_REPEAT_CALLER
@@ -73,6 +74,8 @@ object CallBreakthroughs {
                 }
                 put("at", now)
             })
+            // #5: the phone-state broadcasts complete this row (answered / missed).
+            row.optString("id").takeIf { it.isNotEmpty() }?.let { comms.cellularCall = CellularCallLog.Ringing(it, now) }
         }
 
         if (outcome.record) {
@@ -116,6 +119,47 @@ object CallBreakthroughs {
             state == TelephonyManager.CALL_STATE_IDLE
         } catch (e: SecurityException) {
             null
+        }
+    }
+
+    /**
+     * #5: every PHONE_STATE change. RINGING without a screened row (no
+     * call-screening role, or Telecom skipped screening for a saved contact)
+     * writes an "Incoming call" row with no caller; OFFHOOK marks the tracked
+     * call answered; IDLE stores answered / missed on its row. Outgoing calls
+     * (OFFHOOK with nothing ringing) are never recorded.
+     */
+    @Synchronized
+    fun onPhoneState(context: Context, state: String?, now: Long = System.currentTimeMillis()) {
+        val ctx = context.applicationContext
+        val comms = CommsStore(ctx)
+        val tracked = comms.cellularCall?.takeUnless { CellularCallLog.isStale(it, now) }
+        when (state) {
+            TelephonyManager.EXTRA_STATE_RINGING -> {
+                val engine = EngineStore(ctx)
+                if (!CellularCallLog.needsFallbackRow(engine.owned, tracked, now)) {
+                    if (tracked == null) comms.cellularCall = null
+                    return
+                }
+                val row = JSONObject().apply {
+                    put("type", ActivityEvents.INCOMING_CALL)
+                    put("detail", CellularCallLog.DETAIL_NOT_SCREENED)
+                    put("at", now)
+                }
+                engine.appendEvent(row)
+                AutomationEngine.countInSession(ctx, SessionCounter.CALL_SILENCED)
+                comms.cellularCall = row.optString("id").takeIf { it.isNotEmpty() }?.let { CellularCallLog.Ringing(it, now) }
+                Log.i(TAG, "incoming call not screened: recorded without caller")
+            }
+            TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                comms.cellularCall = tracked?.copy(answered = true)
+            }
+            TelephonyManager.EXTRA_STATE_IDLE -> {
+                tracked?.let { t ->
+                    EngineStore(ctx).updateEvent(t.eventId) { it.put(CellularCallLog.FIELD_CALL_STATE, CellularCallLog.finalState(t)) }
+                }
+                comms.cellularCall = null
+            }
         }
     }
 

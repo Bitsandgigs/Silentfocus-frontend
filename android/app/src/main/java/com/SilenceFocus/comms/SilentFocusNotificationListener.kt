@@ -148,6 +148,10 @@ object MessageAutoReply {
             isMessaging = true,
             hasReplyAction = replyAction != null,
             isGroup = style?.isGroupConversation == true,
+            // A bare CATEGORY_MESSAGE notification has no reliable direct-vs-
+            // group signal. MessagingStyle is the minimum accepted metadata.
+            conversationKnown = style != null,
+            identityAmbiguous = hasConflictingSenders(style),
             // In MessagingStyle a message without a sender (or sent as the
             // style's own user) is the device owner's, e.g. our reply echoed.
             fromSelf = last != null && (last.person == null || samePerson(last.person, style?.user)),
@@ -217,7 +221,19 @@ object MessageAutoReply {
     private fun samePerson(a: androidx.core.app.Person?, b: androidx.core.app.Person?): Boolean {
         if (a == null || b == null) return false
         if (a.key != null && b.key != null) return a.key == b.key
-        return a.name != null && a.name.toString() == b.name?.toString()
+        return a.name?.toString() != null && a.name?.toString() == b.name?.toString()
+    }
+
+    /** More than one external participant contradicts a purported direct conversation. */
+    private fun hasConflictingSenders(style: NotificationCompat.MessagingStyle?): Boolean {
+        if (style == null || style.isGroupConversation) return false
+        val user = style.user
+        val senders = style.messages.mapNotNull { it.person }
+            .filterNot { samePerson(it, user) }
+            .mapNotNull { it.key ?: it.name?.toString()?.trim()?.lowercase() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        return senders.size > 1
     }
 
     /** First action with a free-form text RemoteInput (the inline reply). */

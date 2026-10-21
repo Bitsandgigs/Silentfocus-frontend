@@ -17,6 +17,7 @@ import MapScreen from '../../screens/MapScreen';
 import EmergencyContactsScreen from '../../screens/EmergencyContactsScreen';
 import AutoReplyScreen from '../../screens/AutoReplyScreen';
 import SessionHistoryScreen from '../../screens/SessionHistoryScreen';
+import LegalScreen from '../../screens/LegalScreen';
 
 export default function HomeStack() {
     // Navigation
@@ -58,6 +59,11 @@ export default function HomeStack() {
             <HomeStackNavigator.Screen
                 name={screens.SessionHistoryScreen}
                 component={SessionHistoryScreen}
+                options={{headerShown: false}}
+            />
+            <HomeStackNavigator.Screen
+                name={screens.LegalScreen}
+                component={LegalScreen}
                 options={{headerShown: false}}
             />
         </HomeStackNavigator.Navigator>

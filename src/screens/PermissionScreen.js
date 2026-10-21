@@ -303,8 +303,8 @@ const PermissionScreen = () => {
                     <Text
                         style={[styles.description, {color: subtitleColor}]}
                         allowFontScaling={false}>
-                        To automate silent mode based on where you are and
-                        what’s on your calendar, we need a few permissions.
+                        To automate silent mode in your Custom Silent Zones
+                        and during calendar events, we need a few permissions.
                     </Text>
 
                     {/* Location Permission */}
@@ -326,8 +326,8 @@ const PermissionScreen = () => {
                                     styles.cardDescription,
                                     {color: subtitleColor},
                                 ]}>
-                                To detect silent zones like libraries, offices,
-                                or religious places.
+                                To know when you're at one of your Silent
+                                Zones, such as your office.
                             </Text>
                         </View>
                         <TouchableOpacity onPress={onLocationPermission}>

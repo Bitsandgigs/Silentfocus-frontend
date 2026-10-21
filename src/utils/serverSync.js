@@ -84,7 +84,7 @@ const LOG_CONTENT = {
     EMERGENCY_BREAKTHROUGH: 'Emergency contact allowed',
     URGENT_REPEAT_CALLER: 'Urgent caller allowed',
     MESSAGE_RECEIVED: 'Message received',
-    AUTO_REPLY_SENT: 'Auto reply sent',
+    AUTO_REPLY_SENT: 'Reply action accepted',
 };
 
 const TRIGGER_TYPES = {

@@ -21,35 +21,64 @@ import com.SilenceFocus.R
  */
 object StatusNotification {
 
-    const val CHANNEL_ID = "silent_focus_status"
+    // Android treats channel DND bypass as an immutable user-facing setting.
+    // v2 migrates devices that already have the old, non-bypass channel so
+    // the ongoing silent status is not hidden by the DND state it represents.
+    const val CHANNEL_ID = "silent_focus_status_v2"
     private const val CHANNEL_NAME = "Silent Focus status"
     const val NOTIFICATION_ID = 7301
 
     const val TITLE = "Silent Focus is active"
 
-    data class Content(val title: String, val text: String)
+    /**
+     * The timestamp sent to Android must be epoch/wall time.  Keep this pure
+     * so API-level posting regressions cannot reintroduce an elapsed-realtime
+     * value here.
+     */
+    internal fun timestampFor(manual: Boolean, manualStartedAt: Long, since: Long, now: Long): Long = when {
+        manual && manualStartedAt > 0 -> manualStartedAt
+        since > 0 -> since
+        else -> now
+    }
 
-    /** What to show, or null when nothing should be shown. Pure, for tests. */
+    /** [publicText]: the lock-screen version (no zone, schedule or event names). */
+    data class Content(val title: String, val text: String, val publicText: String = text)
+
+    /**
+     * What to show, or null when nothing should be shown. Pure, for tests.
+     * Client feedback: the header already says Silent Focus is active, so the
+     * line says why. [ruleName] for CALENDAR is from the selected provider
+     * occurrence, null
+     * when it may not be shown.
+     */
     fun content(owned: Boolean, paused: Boolean, source: RuleSource?, ruleName: String?): Content? {
         if (!owned) return null
         if (paused) return Content(TITLE, "Paused while an allowed call rings")
-        val by = when (source) {
+        val generic = when (source) {
             RuleSource.MANUAL -> "Turned on manually"
-            RuleSource.ZONE -> ruleName?.let { "Silent Zone: $it" } ?: "Silent Zone"
-            RuleSource.PLACE -> ruleName?.let { "Public place: $it" } ?: "Public place"
-            RuleSource.SCHEDULE -> ruleName?.let { "Schedule: $it" } ?: "Schedule"
-            // Calendar event titles are never shown.
+            RuleSource.ZONE -> "Silent Zone"
+            RuleSource.PLACE -> "Location Mode"
+            RuleSource.SCHEDULE -> "Schedule"
             RuleSource.CALENDAR -> "Calendar event"
-            null -> null
+            null -> "Your phone is silent"
         }
-        return Content(TITLE, listOfNotNull("Your phone is silent", by).joinToString(" · "))
+        val name = ruleName?.trim()?.takeIf { it.isNotEmpty() && source != RuleSource.MANUAL && source != null }
+        val text = when {
+            name == null -> generic
+            source == RuleSource.CALENDAR -> "Your phone is silent · $generic: $name"
+            else -> "$generic: $name"
+        }
+        return Content(TITLE, text, publicText = generic)
     }
 
     // Avoids re-posting an unchanged notification on every evaluation.
     @Volatile
     private var shown: Content? = null
 
-    fun sync(context: Context, owned: Boolean, paused: Boolean, source: RuleSource?, ruleName: String?, since: Long) {
+    fun sync(
+        context: Context, owned: Boolean, paused: Boolean, source: RuleSource?, ruleName: String?,
+        since: Long, manualStartedAt: Long,
+    ) {
         val ctx = context.applicationContext
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val content = content(owned, paused, source, ruleName)
@@ -61,29 +90,36 @@ object StatusNotification {
         val posted = nm.activeNotifications.any { it.id == NOTIFICATION_ID }
         if (posted && shown == content) return
         ensureChannel(nm)
-        nm.notify(NOTIFICATION_ID, build(ctx, content, since))
+        nm.notify(NOTIFICATION_ID, build(ctx, content, since, source == RuleSource.MANUAL, manualStartedAt))
         shown = content
     }
 
     private fun ensureChannel(nm: NotificationManager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        // LOW: visible in the shade and status bar, never makes a sound.
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shows while Silent Focus is silencing your phone"
-                setShowBadge(false)
-            },
-        )
+        // The status itself must remain visible while SF owns DND. It has no
+        // sound/vibration, and bypassing DND only prevents Android from
+        // hiding this ongoing state notification in its silent section.
+        val channel = nm.getNotificationChannel(CHANNEL_ID)
+            ?: NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        channel.description = "Shows while Silent Focus is silencing your phone"
+        channel.setShowBadge(false)
+        channel.setBypassDnd(true)
+        nm.createNotificationChannel(channel)
     }
 
-    private fun build(ctx: Context, content: Content, since: Long): Notification {
+    private fun build(ctx: Context, content: Content, since: Long, manual: Boolean, manualStartedAt: Long): Notification {
         val open = PendingIntent.getActivity(
             ctx,
             NOTIFICATION_ID,
             Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        // Notification.when is explicitly a wall-clock timestamp.  Supplying
+        // elapsedRealtime here made API 36 classify the notification as years
+        // old and reject it before it reached System UI.  The platform's
+        // chronometer treats this wall-clock session anchor as its count-up
+        // base, including after an app-process restart.
+        val whenMillis = timestampFor(manual, manualStartedAt, since, System.currentTimeMillis())
         return NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_silent_focus)
             .setContentTitle(content.title)
@@ -94,9 +130,22 @@ object StatusNotification {
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setShowWhen(since > 0)
-            .setWhen(if (since > 0) since else System.currentTimeMillis())
+            // Names (event subject, zone) stay off a secure lock screen that
+            // hides sensitive content; the public version gives only the reason.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(ctx, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_silent_focus)
+                    .setContentTitle(content.title)
+                    .setContentText(content.publicText)
+                    .setOngoing(true)
+                    .setSilent(true)
+                    .build(),
+            )
+            .setShowWhen(whenMillis > 0)
+            .setWhen(whenMillis)
+            .setUsesChronometer(manual && manualStartedAt > 0)
+            .setChronometerCountDown(false)
             .build()
     }
 }

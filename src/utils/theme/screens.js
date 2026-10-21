@@ -21,6 +21,7 @@ export default {
     EmergencyContactsScreen: 'EmergencyContactsScreen',
     AutoReplyScreen: 'AutoReplyScreen',
     SessionHistoryScreen: 'SessionHistoryScreen',
+    LegalScreen: 'LegalScreen',
 
     // Profile Flow
     ProfileScreen: 'ProfileScreen',

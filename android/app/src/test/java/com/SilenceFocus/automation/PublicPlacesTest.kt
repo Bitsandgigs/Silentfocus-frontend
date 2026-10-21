@@ -113,6 +113,54 @@ class PublicPlacesTest {
         assertEquals(ActivityEvents.PLACE_ENTER, ActivityEvents.ruleStarted(RuleSource.PLACE))
         assertEquals(ActivityEvents.PLACE_EXIT, ActivityEvents.ruleEnded(RuleSource.PLACE))
         val c = StatusNotification.content(owned = true, paused = false, source = RuleSource.PLACE, ruleName = "City Library")
-        assertTrue(c!!.text.contains("Public place: City Library"))
+        assertEquals("Location Mode: City Library", c!!.text)
+    }
+
+    // ---- Client feedback: Location Mode hidden and disabled behind a gate
+
+    @Test
+    fun `permanent policy ignores every legacy preference`() {
+        assertFalse(Features.PUBLIC_PLACES_LOCATION_MODE)
+        val on = AutomationSettings(publicPlacesEnabled = true, locationEnabled = true)
+        // Input can still deserialize from an old bridge payload, but policy
+        // can never turn it into an active source.
+        assertTrue(on.publicPlacesEnabled)
+        assertFalse(on.publicPlacesActive)
+        assertFalse(AutomationSettings(publicPlacesEnabled = false).publicPlacesActive)
+    }
+
+    @Test
+    fun `reported overlapping public places cannot silence while gated`() {
+        // Client screenshots: two places of worship entered together at 14:53,
+        // and one more next to the office - all long past the 3-minute wait.
+        val now = 1_700_000_000_000L
+        val reported = listOf(
+            PublicPlace("emk", "FrauenNETZwerk EMK", 47.3769, 8.5417),
+            PublicPlace("umc", "United Methodist Church", 47.3770, 8.5418),
+            PublicPlace("aivs", "Albanisch Islamischer Verband Schweiz", 47.3771, 8.5420),
+        )
+        val entered = reported.associate { it.id to now - 30 * 60_000L }
+        val settings = AutomationSettings(publicPlacesEnabled = true, locationEnabled = true)
+        val engine = AutomationEvaluator(listOf(PublicPlaceRuleProvider(reported, entered, settings.publicPlacesActive)))
+        val d = engine.evaluate(now, kolkata, ManualOverride.NONE)
+        assertFalse(d.silent)
+        assertTrue(d.activeRules.isEmpty())
+        assertEquals(null, d.nextBoundary)
+    }
+
+    @Test
+    fun `gated places never silence over a legitimate zone`() {
+        val now = 1_700_000_000_000L
+        val zone = ZoneRule("1", "Office", 47.0, 8.0, 150.0, true)
+        val place = PublicPlace("p", "Church", 47.0001, 8.0001)
+        val settings = AutomationSettings(publicPlacesEnabled = true, locationEnabled = true)
+        val engine = AutomationEvaluator(listOf(
+            LocationRuleProvider(listOf(zone), mapOf("1" to now - 60_000), settings.locationEnabled),
+            PublicPlaceRuleProvider(listOf(place), mapOf("p" to now - 600_000), settings.publicPlacesActive),
+        ))
+        val d = engine.evaluate(now, kolkata, ManualOverride.NONE)
+        assertTrue(d.silent)
+        assertEquals(RuleSource.ZONE, d.source)
+        assertEquals(listOf("1"), d.activeRules.map { it.ruleId })
     }
 }

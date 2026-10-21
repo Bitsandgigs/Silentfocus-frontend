@@ -38,4 +38,13 @@ describe('Silent Zone place search', () => {
         expect(src).toMatch(/requestUrl=\{PLACES_NEW_REQUEST_URL\}/);
         expect(src).toMatch(/fields=\{PLACE_DETAILS_FIELDS\}/);
     });
+
+    test('bounds autocomplete traffic and exposes safe failure states', () => {
+        const src = fs.readFileSync(path.join(__dirname, '../src/screens/MapScreen.js'), 'utf8');
+        expect(src).toMatch(/debounce=\{350\}/);
+        expect(src).toMatch(/minLength=\{2\}/);
+        expect(src).toMatch(/onFail=\{\(\) =>/);
+        expect(src).toMatch(/onNotFound=\{\(\) =>/);
+        expect(src).toMatch(/Google quota or network issue/);
+    });
 });

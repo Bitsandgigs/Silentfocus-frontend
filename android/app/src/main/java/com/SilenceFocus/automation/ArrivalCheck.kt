@@ -46,25 +46,58 @@ object ArrivalCheck {
         }.map { it.id }
     }
 
+    fun exitsReported(geofenceStatus: String): Boolean =
+        geofenceStatus == GeofenceRegistrar.STATUS_REGISTERED || geofenceStatus == GeofenceRegistrar.STATUS_PENDING
+
+    /**
+     * Zones the user just made eligible (newly added or enabled, or moved /
+     * resized while enabled): a reason to check right away.
+     */
+    fun newlyEligible(before: List<ZoneRule>, after: List<ZoneRule>): List<String> {
+        val old = before.filter { it.enabled && it.isValid }.associateBy { it.id }
+        return after.filter { it.enabled && it.isValid && old[it.id] != it }.map { it.id }
+    }
+
     /** Whether a check may run now. */
     fun due(lastAt: Long, now: Long): Boolean = lastAt <= 0L || now - lastAt >= MIN_INTERVAL_MS || now < lastAt
 
     @Volatile private var lastAt = 0L
 
-    /** Starts one check if useful; returns immediately. */
-    fun run(context: Context, now: Long = System.currentTimeMillis()) {
+    /**
+     * Starts one check if useful; returns immediately. [force] skips the
+     * throttle: the user just switched zones on (Custom Mode, a zone enabled
+     * or moved) - Client Issue #6. Play Services only reports the initial
+     * ENTER of new geofences once something requests a fresh fix (opening the
+     * zone map did, via its my-location layer), so without this the phone
+     * stayed loud until the zone editor was opened.
+     */
+    fun run(context: Context, now: Long = System.currentTimeMillis(), force: Boolean = false) {
         val ctx = context.applicationContext
         val store = EngineStore(ctx)
         if (!store.settings.locationEnabled || store.zones.none { it.enabled }) return
         if (!GeofenceRegistrar.hasFine(ctx) || !GeofenceRegistrar.isLocationOn(ctx)) return
         synchronized(this) {
-            if (!due(lastAt, now)) return
+            if (!force && !due(lastAt, now)) return
             lastAt = now
         }
         try {
-            LocationServices.getFusedLocationProviderClient(ctx)
-                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, CancellationTokenSource().token)
-                .addOnSuccessListener { loc -> loc?.let { apply(ctx, it) } }
+            val client = LocationServices.getFusedLocationProviderClient(ctx)
+            client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, CancellationTokenSource().token)
+                .addOnSuccessListener { loc ->
+                    if (loc != null) {
+                        apply(ctx, loc)
+                    } else {
+                        // Some emulator/Play Services combinations return a
+                        // null one-shot fix immediately after a simulated GPS
+                        // update even though lastLocation is usable. A zone
+                        // toggle is an explicit user action, so use that
+                        // recent fused fix rather than waiting for the map or
+                        // a delayed geofence ENTER.
+                        client.lastLocation.addOnSuccessListener { last ->
+                            last?.let { apply(ctx, it) }
+                        }
+                    }
+                }
         } catch (e: SecurityException) {
             Log.i(TAG, "arrival check: no location permission")
         }
@@ -73,6 +106,9 @@ object ArrivalCheck {
     private fun apply(ctx: Context, loc: Location) = runCatching {
         val receivedAt = System.currentTimeMillis()
         val store = EngineStore(ctx)
+        // Only while geofences are (being) registered: their EXIT is what
+        // ends a zone visit, so never enter a zone nothing will ever leave.
+        if (!exitsReported(store.geofenceStatus)) return@runCatching
         val fix = Fix(loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy.toDouble() else -1.0, receivedAt - loc.time)
         val distances = HashMap<String, Double>()
         val entered = enteredZones(store.zones, store.zonePresence.keys, fix) { z ->
@@ -80,17 +116,32 @@ object ArrivalCheck {
             Location.distanceBetween(loc.latitude, loc.longitude, z.latitude, z.longitude, d)
             d[0].toDouble().also { distances[z.id] = it }
         }
-        if (entered.isEmpty()) return@runCatching
-        store.zonePresence = store.zonePresence + entered.associateWith { receivedAt }
-        Log.i(TAG, "arrival check: entered ${entered.size} zone(s)")
-        val state = AutomationEngine.evaluate(ctx, TriggerReason.ZONE_ENTER)
-        val nearest = entered.minByOrNull { distances[it] ?: Double.MAX_VALUE }
+        val exited = store.zones.filter { zone ->
+            zone.enabled && zone.isValid && zone.id in store.zonePresence &&
+                zone.id !in entered &&
+                (distances[zone.id] ?: run {
+                    val d = FloatArray(1)
+                    Location.distanceBetween(loc.latitude, loc.longitude, zone.latitude, zone.longitude, d)
+                    d[0].toDouble().also { distances[zone.id] = it }
+                }) - fix.accuracyM / 2 > maxOf(
+                    zone.radiusMeters,
+                    GeofenceRegistrar.MIN_RADIUS_METERS.toDouble(),
+                )
+        }.map { it.id }
+        if (entered.isEmpty() && exited.isEmpty()) return@runCatching
+        store.zonePresence = (store.zonePresence - exited) + entered.associateWith { receivedAt }
+        val transition = if (entered.isNotEmpty()) "ENTER_ARRIVAL_CHECK" else "EXIT_ARRIVAL_CHECK"
+        val reason = if (entered.isNotEmpty()) TriggerReason.ZONE_ENTER else TriggerReason.ZONE_EXIT
+        Log.i(TAG, "arrival check: entered=${entered.size} exited=${exited.size} zone(s)")
+        val state = AutomationEngine.evaluate(ctx, reason)
+        val affected = if (entered.isNotEmpty()) entered else exited
+        val nearest = affected.minByOrNull { distances[it] ?: Double.MAX_VALUE }
         GeofenceDiagnosticsStore(ctx).record(
             GeofenceDiagnostics.Record(
                 kind = GeofenceDiagnostics.Kind.EVENT,
                 at = receivedAt,
-                transition = "ENTER_ARRIVAL_CHECK",
-                zoneIds = entered,
+                transition = transition,
+                zoneIds = affected,
                 fixTime = loc.time,
                 fixAgeMs = fix.ageMs,
                 accuracyM = fix.accuracyM.toInt(),

@@ -111,26 +111,9 @@ class GeofenceEventReceiver : BroadcastReceiver() {
      * event held no Silent Zone geofence (nothing left to do).
      */
     private fun handlePublicPlaces(context: Context, store: EngineStore, requestIds: List<String>, transition: Int): Boolean {
-        val placeIds = requestIds.filter { it.startsWith(PublicPlaces.REQUEST_PREFIX) }
-            .map { it.removePrefix(PublicPlaces.REQUEST_PREFIX) }
-        val leftArea = PublicPlaces.AREA_REQUEST_ID in requestIds && transition == Geofence.GEOFENCE_TRANSITION_EXIT
-        if (leftArea) PublicPlaces.scheduleRefresh(context)
-
-        if (placeIds.isNotEmpty() && transition != Geofence.GEOFENCE_TRANSITION_DWELL) {
-            val now = System.currentTimeMillis()
-            val presence = store.placePresence.toMutableMap()
-            val reason = if (transition == Geofence.GEOFENCE_TRANSITION_ENTER) {
-                placeIds.forEach { presence.putIfAbsent(it, now) }
-                TriggerReason.ZONE_ENTER
-            } else {
-                placeIds.forEach { presence.remove(it) }
-                TriggerReason.ZONE_EXIT
-            }
-            val known = store.publicPlaces.map { it.id }.toSet()
-            store.placePresence = presence.filterKeys { it in known }
-            Log.i(TAG, "public place $reason for ${placeIds.size} place(s)")
-            AutomationEngine.evaluate(context, reason)
-        }
+        // Ignore and clean any callback from an obsolete pre-upgrade place
+        // registration. Custom zone ids continue through the normal path.
+        PublicPlaces.disablePermanently(context)
         return requestIds.none { it.startsWith(GeofenceRegistrar.REQUEST_PREFIX) }
     }
 

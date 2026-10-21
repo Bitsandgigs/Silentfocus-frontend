@@ -96,6 +96,17 @@ class EmergencyContactTest {
         }
     }
 
+    @Test fun `ambiguous stored number never guesses an emergency contact`() {
+        val ambiguous = listOf(
+            mom,
+            EmergencyContact("c2", "Someone else", "+449876543210"),
+        )
+        val o = CallDecider(ambiguous, CallSettings(), "salt")
+            .onCall("9876543210", true, true, now, RepeatCallState())
+        assertNull(o.breakthrough)
+        assertNull(o.contact)
+    }
+
     @Test fun `7 breakthrough ends and Silent Focus stays active`() {
         val bt = Breakthrough("EMERGENCY_CONTACT", since = now, until = now + Breakthrough.MAX_MS)
         // Rules still want silence the whole time; only the device is paused.

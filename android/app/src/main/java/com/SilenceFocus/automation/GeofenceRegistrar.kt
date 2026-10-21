@@ -92,16 +92,16 @@ object GeofenceRegistrar {
 
         val settings = store.settings
         val blocked = when {
-            !settings.locationEnabled && !settings.publicPlacesEnabled -> STATUS_DISABLED
+            !settings.locationEnabled && !settings.publicPlacesActive -> STATUS_DISABLED
             !hasFine(ctx) -> if (hasCoarse(ctx)) STATUS_APPROXIMATE_ONLY else STATUS_NO_LOCATION_PERMISSION
             !hasBackground(ctx) -> STATUS_NO_BACKGROUND
             else -> null
         }
         val selected = if (settings.locationEnabled) selectZones(store.zones).take(MAX_GEOFENCES) else emptyList()
-        val search = store.placeSearch.takeIf { settings.publicPlacesEnabled }
+        val search = store.placeSearch.takeIf { settings.publicPlacesActive }
         val places = if (search != null) PublicPlaces.placesForFences(store.publicPlaces, selected.size) else emptyList()
         val area = search?.takeIf { selected.size < MAX_GEOFENCES }
-        if (blocked == null && settings.publicPlacesEnabled && search == null) PublicPlaces.scheduleRefresh(ctx)
+        if (blocked == null && settings.publicPlacesActive && search == null) PublicPlaces.scheduleRefresh(ctx)
 
         if (blocked != null || (selected.isEmpty() && area == null)) {
             // Without working geofences we can't know where the device is;

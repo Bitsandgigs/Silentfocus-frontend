@@ -159,6 +159,29 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
         AutomationEngine.setSchedules(reactContext, parseSchedules(schedules))
     }
 
+    // ---- One-time schedules (automation/OnceSchedules.kt), stored per account on this phone.
+
+    /** Resolves {ok, error, schedules: [{id, startAt, endAt, status, ...}], state}. */
+    @ReactMethod
+    fun activateOnceSchedules(userId: Double, promise: Promise) = run(promise) {
+        AutomationEngine.activateOnceSchedules(reactContext, userId.toLong())
+    }
+
+    /** [schedule]: {id?, startAt, endAt} (epoch ms). Edits only PENDING schedules. */
+    @ReactMethod
+    fun saveOnceSchedule(userId: Double, schedule: ReadableMap, promise: Promise) = run(promise) {
+        fun num(key: String) =
+            if (schedule.hasKey(key) && !schedule.isNull(key) && schedule.getType(key) == ReadableType.Number) schedule.getDouble(key).toLong() else 0L
+        val id = if (schedule.hasKey("id") && !schedule.isNull("id")) schedule.getString("id") else null
+        AutomationEngine.saveOnceSchedule(reactContext, userId.toLong(), id, num("startAt"), num("endAt"))
+    }
+
+    /** Cancels (or with [remove] deletes) a one-time schedule; an active one ends now. */
+    @ReactMethod
+    fun cancelOnceSchedule(userId: Double, id: String, remove: Boolean, promise: Promise) = run(promise) {
+        AutomationEngine.cancelOnceSchedule(reactContext, userId.toLong(), id, remove)
+    }
+
     /** [zones]: [{id, name?, latitude, longitude, radius, enabled}] */
     @ReactMethod
     fun setZones(zones: ReadableArray, promise: Promise) = run(promise) {
@@ -397,9 +420,10 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(true)
     }
 
-    /** Account deleted: its outbox can never be uploaded. */
+    /** Account deleted: its outbox can never be uploaded; its one-time schedules go too. */
     @ReactMethod
     fun dropOutbox(userId: Double, promise: Promise) {
+        runCatching { com.SilenceFocus.automation.OnceScheduleStore(reactContext).clear(userId.toLong()) }
         promise.resolve(runCatching { OutboxStore(reactContext).drop(userId.toLong()) }.getOrDefault(false))
     }
 
@@ -543,6 +567,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
                         put("primarySource", s.primarySource ?: JSONObject.NULL)
                         put("sources", JSONArray(s.sources.toList()))
                         put("zoneNames", JSONArray(s.zoneNames.toList()))
+                        put("calendarEventTitle", s.calendarEventTitle ?: JSONObject.NULL)
                         put("emergencyBreakthroughs", s.emergencyBreakthroughs)
                         put("urgentBreakthroughs", s.urgentBreakthroughs)
                         put("callsSilenced", s.callsSilenced)
@@ -726,6 +751,7 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
         "debugServerWritesAccountId" to if (BuildConfig.DEBUG) BuildConfig.DEBUG_SERVER_WRITES_ACCOUNT_ID else "",
         // Field-test build type: automatic uploads off (serverSync.serverWritesAllowed).
         "automaticUploadsDisabled" to BuildConfig.SF_AUTOMATIC_UPLOADS_DISABLED,
+        "scheduleQaMock" to BuildConfig.SF_SCHEDULE_QA_MOCK,
     )
 
     // ---- Phase 4: emergency contacts, urgent callers, auto reply

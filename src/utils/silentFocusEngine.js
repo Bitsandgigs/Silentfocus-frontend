@@ -29,6 +29,32 @@ export const pushSchedulesToEngine = schedules =>
         ? Native.setSchedules(toEngineSchedules(schedules))
         : unavailable();
 
+// One-time schedules (native, per account on this phone). Each resolves
+// {ok, error, schedules: [{id, startAt, endAt, status}], state}.
+const noOnce = () => Promise.resolve({ok: false, error: 'UNAVAILABLE', schedules: [], state: null});
+const ownerId = userId => Number(userId) || 0;
+
+export const activateOnceSchedules = userId =>
+    isEngineAvailable && Native.activateOnceSchedules
+        ? Native.activateOnceSchedules(ownerId(userId))
+        : noOnce();
+
+// {id?, startAt, endAt}; editing works only before the schedule starts.
+export const saveOnceSchedule = (userId, schedule) =>
+    isEngineAvailable && Native.saveOnceSchedule
+        ? Native.saveOnceSchedule(ownerId(userId), {
+              id: schedule?.id || null,
+              startAt: Number(schedule?.startAt) || 0,
+              endAt: Number(schedule?.endAt) || 0,
+          })
+        : noOnce();
+
+// remove=false: cancel (an active one ends now); remove=true: delete it.
+export const cancelOnceSchedule = (userId, id, remove = false) =>
+    isEngineAvailable && Native.cancelOnceSchedule
+        ? Native.cancelOnceSchedule(ownerId(userId), String(id), !!remove)
+        : noOnce();
+
 // Accepts normalised Silent Zones (normalizeSilentZone output).
 export const pushZonesToEngine = zones =>
     isEngineAvailable ? Native.setZones(toEngineZones(zones)) : unavailable();

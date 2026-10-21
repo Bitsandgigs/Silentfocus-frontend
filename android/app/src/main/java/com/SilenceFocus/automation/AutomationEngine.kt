@@ -31,29 +31,45 @@ object AutomationEngine {
     var learningListener: (() -> Unit)? = null
 
     /** Rule sources, highest priority first (Manual is the override). */
-    private fun evaluator(store: EngineStore): AutomationEvaluator {
-        val settings = store.settings
+    private fun evaluator(store: EngineStore, once: List<OnceSchedule>): AutomationEvaluator {
         return AutomationEvaluator(
             listOf(
-                LocationRuleProvider(store.zones, store.zonePresence, settings.locationEnabled),
-                PublicPlaceRuleProvider(store.publicPlaces, store.placePresence, settings.publicPlacesEnabled),
+                LocationRuleProvider(store.zones, store.zonePresence, store.settings.locationEnabled),
                 ScheduleRuleProvider(store.schedules),
-                CalendarRuleProvider(store.calendarEvents, settings),
+                OnceScheduleProvider(once),
+                CalendarRuleProvider(store.calendarEvents, store.settings),
             ),
         )
+    }
+
+    /**
+     * The schedule owner's one-time schedules, with completions reached by
+     * time persisted first (a finished schedule can never run again).
+     */
+    private fun onceSchedules(context: Context, store: EngineStore, now: Long): List<OnceSchedule> {
+        val owner = store.scheduleOwner
+        if (owner <= 0) return emptyList()
+        val onceStore = OnceScheduleStore(context)
+        val list = onceStore.list(owner)
+        return OnceSchedule.housekeep(list, now)?.also { onceStore.save(owner, it) } ?: list
     }
 
     @Synchronized
     fun evaluate(context: Context, reason: TriggerReason, nowMillis: Long = System.currentTimeMillis()): JSONObject {
         val store = EngineStore(context)
+        // Runs on every entry path (UI, alarm, geofence, boot, process
+        // restart): old Public Places state can neither own nor regain DND.
+        PublicPlaces.disablePermanently(context)
         val dnd = DndController(context, store)
         val scheduler = AlarmScheduler(context)
         val tz = TimeZone.getDefault()
 
         val wasSilent = store.owned
-        val previousSource = store.lastState?.takeUnless { it.isNull("source") }
+        val previousState = store.lastState
+        val previousSource = previousState?.takeUnless { it.isNull("source") }
             ?.let { runCatching { RuleSource.valueOf(it.getString("source")) }.getOrNull() }
-        val decision = evaluator(store).evaluate(nowMillis, tz, store.override)
+        val once = onceSchedules(context, store, nowMillis)
+        val decision = evaluator(store, once).evaluate(nowMillis, tz, store.override)
         // Expired overrides are dropped so they can't come back.
         if (decision.override != store.override) store.override = decision.override
 
@@ -76,10 +92,19 @@ object AutomationEngine {
         val state = buildState(decision, result, dnd, scheduler, store, reason, nowMillis, exact, breakthrough)
         store.lastState = state
         journal(store, wasSilent, store.owned, previousSource, decision, result, reason, nowMillis)
-        recordSession(context, store, decision, nowMillis)
+        recordSession(context, store, decision, reason, previousState, nowMillis)
         runCatching {
-            val ruleName = decision.activeRules.firstOrNull { it.source == decision.source }?.name
-            StatusNotification.sync(context, store.owned, store.dndPaused, decision.source, ruleName, store.ownedSince)
+            // Calendar metadata comes from the exact Instances occurrence that
+            // selected DND and is also sent in the native active-state snapshot.
+            val ruleName = if (decision.source == RuleSource.CALENDAR) {
+                CalendarTitles.labelFor(decision.activeRules)
+            } else {
+                decision.activeRules.firstOrNull { it.source == decision.source }?.name
+            }
+            StatusNotification.sync(
+                context, store.owned, store.dndPaused, decision.source, ruleName,
+                store.ownedSince, store.manualSessionStartedAt,
+            )
         }.onFailure { Log.w(TAG, "status notification failed: ${it.javaClass.simpleName}") }
         Log.i(TAG, "evaluate($reason) silent=${decision.silent} source=${decision.source} mode=$mode applied=${result.applied}")
 
@@ -101,9 +126,13 @@ object AutomationEngine {
             }
         }
         store.override = if (on) {
+            // A repeated ON is not a new session.  This keeps the timer tied
+            // to a stable native session identity rather than RN renders.
+            if (store.override.mode != OverrideMode.FORCE_ON) store.manualSessionStartedAt = now
             ManualOverride.FORCE_ON
         } else {
-            evaluator(store).manualOffOverride(now, TimeZone.getDefault())
+            store.manualSessionStartedAt = 0L
+            evaluator(store, onceSchedules(context, store, now)).manualOffOverride(now, TimeZone.getDefault())
         }
         val state = evaluate(context, if (on) TriggerReason.MANUAL_ON else TriggerReason.MANUAL_OFF, now)
         // The user's explicit tap is the only learning signal (never
@@ -121,14 +150,96 @@ object AutomationEngine {
         return evaluate(context, TriggerReason.SCHEDULE_CHANGED)
     }
 
+    // ---- One-time schedules (OnceSchedules.kt); every change re-evaluates.
+
+    /** The signed-in app loaded its schedules: [owner]'s one-time schedules automate. */
+    @Synchronized
+    fun activateOnceSchedules(context: Context, owner: Long): JSONObject {
+        val store = EngineStore(context)
+        if (owner > 0 && store.scheduleOwner != owner) store.scheduleOwner = owner
+        return onceResult(context, store, null, evaluate(context, TriggerReason.SCHEDULE_CHANGED))
+    }
+
+    /**
+     * Creates ([id] null) or edits a PENDING one-time schedule. The start must
+     * not be in the past (beyond [OnceSchedule.START_GRACE_MS]); nothing is
+     * moved to another day silently - the screen asks the user first.
+     */
+    @Synchronized
+    fun saveOnceSchedule(
+        context: Context,
+        owner: Long,
+        id: String?,
+        startAt: Long,
+        endAt: Long,
+        now: Long = System.currentTimeMillis(),
+    ): JSONObject {
+        val store = EngineStore(context)
+        if (owner <= 0) return onceResult(context, store, OnceSchedule.ERROR_NO_ACCOUNT, null)
+        store.scheduleOwner = owner
+        OnceSchedule.validate(startAt, endAt, now)?.let { return onceResult(context, store, it, null) }
+        val onceStore = OnceScheduleStore(context)
+        val list = onceSchedules(context, store, now)
+        val next = if (id == null) {
+            list + OnceSchedule(OnceSchedule.ID_PREFIX + java.util.UUID.randomUUID(), startAt, endAt, now)
+        } else {
+            val existing = list.firstOrNull { it.id == id } ?: return onceResult(context, store, OnceSchedule.ERROR_NOT_FOUND, null)
+            if (existing.status(now) != OnceSchedule.Status.PENDING) {
+                return onceResult(context, store, OnceSchedule.ERROR_NOT_EDITABLE, null)
+            }
+            list.map { if (it.id == id) it.copy(startAt = startAt, endAt = endAt) else it }
+        }
+        onceStore.save(owner, next)
+        return onceResult(context, store, null, evaluate(context, TriggerReason.SCHEDULE_CHANGED, now))
+    }
+
+    /**
+     * Cancels a pending schedule (it never starts) or ends an active one now
+     * (its reason for silencing ends; other active reasons still apply).
+     * [remove]: delete the entry instead of keeping it as Cancelled.
+     */
+    @Synchronized
+    fun cancelOnceSchedule(context: Context, owner: Long, id: String, remove: Boolean, now: Long = System.currentTimeMillis()): JSONObject {
+        val store = EngineStore(context)
+        if (owner <= 0) return onceResult(context, store, OnceSchedule.ERROR_NO_ACCOUNT, null)
+        val onceStore = OnceScheduleStore(context)
+        val list = OnceScheduleStore(context).list(owner)
+        if (list.none { it.id == id }) return onceResult(context, store, OnceSchedule.ERROR_NOT_FOUND, null)
+        val next = if (remove) {
+            list.filterNot { it.id == id }
+        } else {
+            list.map { if (it.id == id && it.isLive(now)) it.copy(cancelledAt = now) else it }
+        }
+        onceStore.save(owner, next)
+        return onceResult(context, store, null, evaluate(context, TriggerReason.SCHEDULE_CHANGED, now))
+    }
+
+    private fun onceResult(context: Context, store: EngineStore, error: String?, state: JSONObject?): JSONObject {
+        val now = System.currentTimeMillis()
+        val owner = store.scheduleOwner
+        return JSONObject().apply {
+            put("ok", error == null)
+            put("error", error ?: JSONObject.NULL)
+            put("schedules", JSONArray().apply {
+                OnceScheduleStore(context).list(owner).sortedBy { it.startAt }.forEach { s ->
+                    put(s.toJson().put("status", s.status(now).name))
+                }
+            })
+            put("state", state ?: JSONObject.NULL)
+        }
+    }
+
     /** New zone list from JS: persist, re-register geofences, evaluate. */
     @Synchronized
     fun setZones(context: Context, zones: List<ZoneRule>): JSONObject {
         val store = EngineStore(context)
         val changed = store.zones != zones
+        val eligible = ArrivalCheck.newlyEligible(store.zones, zones)
         store.zones = zones
         // Unchanged lists (every Home refresh) only verify the registration.
         GeofenceRegistrar.sync(context, force = changed)
+        // #6: a zone just enabled/added/moved - check now whether we're in it.
+        if (eligible.isNotEmpty()) runCatching { ArrivalCheck.run(context, force = true) }
         return evaluate(context, TriggerReason.ZONES_CHANGED)
     }
 
@@ -136,20 +247,15 @@ object AutomationEngine {
     fun setSettings(context: Context, settings: AutomationSettings): JSONObject {
         val store = EngineStore(context)
         val before = store.settings
-        store.settings = settings
-        if (before.publicPlacesEnabled != settings.publicPlacesEnabled) {
-            if (settings.publicPlacesEnabled) {
-                // The user's own switch-on may try again right away (daily cap still applies).
-                store.placeLastAttempt = 0L
-                PublicPlaces.onEnabled(context)
-            } else {
-                PublicPlaces.onDisabled(context)
-            }
-        }
-        if (before.locationEnabled != settings.locationEnabled || before.publicPlacesEnabled != settings.publicPlacesEnabled) {
+        store.settings = settings.copy(publicPlacesEnabled = false)
+        PublicPlaces.disablePermanently(context)
+        if (before.locationEnabled != settings.locationEnabled) {
             GeofenceRegistrar.sync(context, force = true)
         }
-        if (before != settings) CalendarSync.sync(context)
+        if (before != settings.copy(publicPlacesEnabled = false)) CalendarSync.sync(context)
+        // #6: Custom Mode (the user's Silent Zones) just switched on - check
+        // now whether we're already inside one, without opening the map.
+        if (!before.locationEnabled && settings.locationEnabled) runCatching { ArrivalCheck.run(context, force = true) }
         return evaluate(context, TriggerReason.SETTINGS_CHANGED)
     }
 
@@ -316,7 +422,9 @@ object AutomationEngine {
         val store = EngineStore(context)
         return AccountHistory.finishSignOut(
             hasUserAutomation = AccountHistory.hasUserAutomation(
-                store.owned, store.override.mode, store.schedules.size, store.zones.size, store.calendarEvents.size,
+                // A one-time schedule owner counts as a rule: it must not keep running signed out.
+                store.owned, store.override.mode, store.schedules.size + (if (store.scheduleOwner > 0) 1 else 0),
+                store.zones.size, store.calendarEvents.size,
             ),
             preserve = { preserveForLogout(context, 0L) != null },
             reset = { keep -> reset(context, keepHistory = keep) },
@@ -351,6 +459,7 @@ object AutomationEngine {
         put("blockedReason", r.blockedReason ?: JSONObject.NULL)
         put("source", d.source?.name ?: JSONObject.NULL)
         put("silentSince", if (store.owned) store.ownedSince else JSONObject.NULL)
+        put("manualSessionStartedAt", store.manualSessionStartedAt.takeIf { it > 0 } ?: JSONObject.NULL)
         // Silent Focus stays active during a break-through call; only the
         // device silencing is paused.
         put("breakthrough", breakthrough?.let {
@@ -384,7 +493,11 @@ object AutomationEngine {
             put("insideZoneIds", JSONArray(store.zonePresence.keys.toList()))
         })
         put("publicPlaces", JSONObject().apply {
-            put("enabled", settings.publicPlacesEnabled)
+            put("enabled", settings.publicPlacesActive)
+            // Location Mode is gated off in this build (Features); the user's
+            // own choice is kept for when it returns.
+            put("available", Features.PUBLIC_PLACES_LOCATION_MODE)
+            put("preference", settings.publicPlacesEnabled)
             put("status", store.placeStatus)
             put("placeCount", store.publicPlaces.size)
             put("lastSearchAt", store.placeSearch?.at ?: JSONObject.NULL)
@@ -463,12 +576,28 @@ object AutomationEngine {
     }
 
     /** Session history follows Silent Focus being active (also while paused for a call). */
-    private fun recordSession(context: Context, store: EngineStore, d: Decision, now: Long) {
+    private fun recordSession(
+        context: Context,
+        store: EngineStore,
+        d: Decision,
+        reason: TriggerReason,
+        previousState: JSONObject?,
+        now: Long,
+    ) {
         runCatching {
             val history = SessionStore(context)
             if (history.recordingSince == 0L) history.recordingSince = now
+            val prior = previousState?.optJSONArray("activeRules")
+            val previousEnds = if (prior == null) emptyList() else (0 until prior.length()).map { i ->
+                prior.optJSONObject(i)?.takeUnless { it.isNull("windowEnd") }?.optLong("windowEnd")
+            }
+            val closeAt = SessionTracker.closeTime(
+                now,
+                reason == TriggerReason.TIME_CHANGED || reason == TriggerReason.TIMEZONE_CHANGED,
+                previousEnds,
+            )
             history.update {
-                SessionTracker.onEvaluate(it, store.owned, store.ownedSince, d.source?.name, d.activeRules, now)
+                SessionTracker.onEvaluate(it, store.owned, store.ownedSince, d.source?.name, d.activeRules, closeAt)
             }
         }
     }

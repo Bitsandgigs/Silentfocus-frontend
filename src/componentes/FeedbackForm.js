@@ -1,15 +1,23 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View, useColorScheme} from 'react-native';
 import {ACTION_BUTTON_BG, linkColor} from '../utils/theme/controlColors';
 import {showAlert} from '../function/Alert';
 import Constants from '../utils/theme/constants';
-import {FEEDBACK_CATEGORIES, FEEDBACK_MAX_LENGTH, FEEDBACK_MIN_LENGTH, sendFeedback} from '../utils/feedback';
+import {
+    FEEDBACK_CATEGORIES,
+    FEEDBACK_MAX_LENGTH,
+    FEEDBACK_MIN_LENGTH,
+    sendFeedback,
+} from '../utils/feedback';
 
 const ORANGE = '#D6721E';
 
 const FAILURE_TEXT = {
     offline: 'You are offline. Please try again when you are connected.',
     signedOut: 'Please sign in again to send feedback.',
+    auth: 'Your session has expired. Please sign in again to send feedback.',
+    validation: 'Please check the feedback details and try again.',
+    network: 'We could not reach the server. Your feedback was not submitted. Please try again.',
 };
 
 /** Accounts section: collapsed row that opens a short feedback form. */
@@ -19,6 +27,7 @@ const FeedbackForm = ({send = sendFeedback}) => {
     const [category, setCategory] = useState('idea');
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
+    const sendingRef = useRef(false);
 
     const text = isDark ? '#FFFFFF' : '#1A1A1A';
     const muted = isDark ? '#AAA' : '#555';
@@ -26,12 +35,22 @@ const FeedbackForm = ({send = sendFeedback}) => {
     const canSend = message.trim().length >= FEEDBACK_MIN_LENGTH && !sending;
 
     const onSend = async () => {
-        if (!canSend) {
+        // Close the event-loop gap before React commits the disabled state so
+        // two rapid taps can never create two requests.
+        if (!canSend || sendingRef.current) {
             return;
         }
+        sendingRef.current = true;
         setSending(true);
-        const result = await send({category, message});
-        setSending(false);
+        let result;
+        try {
+            result = await send({category, message});
+        } catch (error) {
+            result = {ok: false, reason: 'network'};
+        } finally {
+            sendingRef.current = false;
+            setSending(false);
+        }
         if (result.ok) {
             setMessage('');
             setOpen(false);

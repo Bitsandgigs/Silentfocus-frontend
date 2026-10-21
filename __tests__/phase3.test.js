@@ -33,17 +33,17 @@ describe('buildAutomationSettings', () => {
             calendarBeforeMinutes: 10,
             calendarAfterMinutes: 5,
             ignoreAllDayEvents: true,
-            publicPlacesEnabled: true,
+            publicPlacesEnabled: false,
         });
     });
 
-    test('Location Mode alone drives public places', () => {
+    test('legacy Location Mode can never drive public places', () => {
         const on = buildAutomationSettings({
             controlModes: {locationMode: true, customMode: false, customModeConfirmed: true},
             settings,
             calendarConnected: false,
         });
-        expect(on.publicPlacesEnabled).toBe(true);
+        expect(on.publicPlacesEnabled).toBe(false);
         expect(on.locationEnabled).toBe(false);
         const off = buildAutomationSettings({
             controlModes: {locationMode: '0', customMode: true, customModeConfirmed: true},
@@ -155,14 +155,14 @@ describe('Home labels for new sources', () => {
         expect(silenceEndsAt(state)).toBeNull();
     });
 
-    test('calendar shows an end time but no event details', () => {
+    test('calendar shows the selected occurrence title and end time', () => {
         const end = new Date(2026, 8, 28, 11, 5).getTime();
         const state = {
             ...base,
             source: 'CALENDAR',
-            activeRules: [{source: 'CALENDAR', ruleId: '1:2:3', name: null, windowStart: 1, windowEnd: end}],
+            activeRules: [{source: 'CALENDAR', ruleId: '1:2:3', name: 'SF QA Flight LX381', windowStart: 1, windowEnd: end}],
         };
-        expect(describeEngineState(state, now).detail).toBe('Calendar event until 11:05 AM');
+        expect(describeEngineState(state, now).detail).toBe('SF QA Flight LX381 until 11:05 AM');
     });
 
     test('location issue only when zones are meant to work', () => {

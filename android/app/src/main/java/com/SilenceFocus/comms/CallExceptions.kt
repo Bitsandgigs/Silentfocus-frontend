@@ -114,7 +114,11 @@ class EmergencyContactException(
 
     fun match(number: String?): EmergencyContact? {
         if (!enabled || PhoneNumbers.normalize(number) == null) return null
-        return contacts.firstOrNull { PhoneNumbers.sameNumber(it.number, number) }
+        // Never guess when legacy/imported state contains two records whose
+        // numbers collapse to the same conservative suffix match.
+        return contacts.filter { PhoneNumbers.sameNumber(it.number, number) }
+            .distinctBy { it.id }
+            .singleOrNull()
     }
 }
 

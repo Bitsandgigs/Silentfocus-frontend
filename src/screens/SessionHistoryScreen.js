@@ -72,13 +72,16 @@ const SessionHistoryScreen = () => {
         const related = eventsInSession(events, s, now).filter(r => r.category !== 'MESSAGE' || r.type !== 'MESSAGE_RECEIVED');
         const facts = [
             ['Started by', primary],
+            s.primarySource === 'CALENDAR'
+                ? ['Event', s.calendarEventTitle || 'Calendar event']
+                : null,
             others.length ? ['Also active', others.join(', ')] : null,
             s.zoneNames.length ? ['Zones', s.zoneNames.join(', ')] : null,
             s.emergencyBreakthroughs ? ['Emergency calls allowed', String(s.emergencyBreakthroughs)] : null,
             s.urgentBreakthroughs ? ['Urgent callers allowed', String(s.urgentBreakthroughs)] : null,
             s.callsSilenced ? ['Calls silenced', String(s.callsSilenced)] : null,
             s.messagesReceived ? ['Messages received', String(s.messagesReceived)] : null,
-            s.autoRepliesSent ? ['Auto replies sent', String(s.autoRepliesSent)] : null,
+            s.autoRepliesSent ? ['Reply actions accepted', String(s.autoRepliesSent)] : null,
         ].filter(Boolean);
         return (
             <View style={styles.details}>

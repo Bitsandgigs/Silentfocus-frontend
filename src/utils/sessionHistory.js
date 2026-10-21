@@ -28,6 +28,8 @@ export const normalizeSessions = raw => {
             primarySource: s.primarySource || null,
             sources: Array.isArray(s.sources) ? s.sources : [],
             zoneNames: Array.isArray(s.zoneNames) ? s.zoneNames : [],
+            calendarEventTitle: typeof s.calendarEventTitle === 'string' && s.calendarEventTitle.trim()
+                ? s.calendarEventTitle.trim() : null,
             emergencyBreakthroughs: num(s.emergencyBreakthroughs),
             urgentBreakthroughs: num(s.urgentBreakthroughs),
             callsSilenced: num(s.callsSilenced),

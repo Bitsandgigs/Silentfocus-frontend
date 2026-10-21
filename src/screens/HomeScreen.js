@@ -37,8 +37,17 @@ import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import {showAlert, showApiErrorAlert} from '../function/Alert';
 import LearningSuggestionCard from '../componentes/LearningSuggestionCard';
-import {normalizeScheduleRow} from '../utils/scheduleRules';
 import {
+    SCHEDULE_TYPE,
+    formatOnceRange,
+    normalizeOnceRow,
+    normalizeScheduleRow,
+    onceStatusLabel,
+    weeklyDaysLabel,
+} from '../utils/scheduleRules';
+import {
+    activateOnceSchedules,
+    cancelOnceSchedule,
     isEngineAvailable,
     openDndAccessSettings,
     openExactAlarmSettings,
@@ -73,6 +82,8 @@ export default function HomeScreen() {
     // Counts manual Silent ON taps (Smart Location Learning's only signal).
     const [manualOnCount, setManualOnCount] = useState(0);
     const [scheduleLoadError, setScheduleLoadError] = useState(false);
+    // One-time schedules: native, on this phone (see OnceSchedules.kt).
+    const [onceRows, setOnceRows] = useState([]);
     const silentActive = !!engineState?.silentActive;
     const activeScheduleIds = (engineState?.activeRules || [])
         .filter(rule => rule.source === 'SCHEDULE')
@@ -122,18 +133,30 @@ export default function HomeScreen() {
         },
     ];
 
-    // Countdown display only (1s re-render while silent by schedule); the
-    // automation itself runs natively on alarms.
+    // Display-only tick: timing remains native/persisted.  It covers both
+    // schedule countdowns and the Manual elapsed timer without a JS clock.
     const [now, setNow] = useState(Date.now());
     const silenceEnd = silenceEndsAt(engineState);
     const status = describeEngineState(engineState, now);
     useEffect(() => {
-        if (!silenceEnd) {
+        if (!silenceEnd && engineState?.source !== 'MANUAL') {
             return undefined;
         }
         const interval = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(interval);
-    }, [silenceEnd]);
+    }, [silenceEnd, engineState?.source]);
+
+    // A schedule started or ended natively (alarm): refresh the one-time list
+    // so its status (On now / Finished) is current. SCHEDULE_CHANGED (our own
+    // reload) is not a trigger, so this can't loop.
+    const lastReason = engineState?.lastReason;
+    const lastEvaluatedAt = engineState?.evaluatedAt;
+    useEffect(() => {
+        if (isFocused && (lastReason === 'SCHEDULE_START' || lastReason === 'SCHEDULE_END')) {
+            loadOnceSchedules();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lastReason, lastEvaluatedAt, isFocused]);
 
     // Home is where the app lands: refresh everything the native engine
     // automates from (settings, zones, device calendar). The engine keeps
@@ -142,6 +165,7 @@ export default function HomeScreen() {
         if (isFocused) {
             setIsLoading(true);
             getScheduleApiCall();
+            loadOnceSchedules();
             syncAllAutomationSources()
                 .then(state => state && setEngineState(state))
                 .catch(() => {});
@@ -255,15 +279,28 @@ export default function HomeScreen() {
         navigation.navigate(screens.ScheduleTimeScreen);
     };
 
-    const onPressDelete = scheduleId => {
-        const payload = {
-            userId: Constants.commonConstant.appUserId
-                ? Constants.commonConstant.appUserId
-                : '',
-            schedule_id: scheduleId ? scheduleId : '',
-        };
-        setIsLoading(true);
-        ScheduleTimerDataDeleteApiCall(payload);
+    const onPressDelete = (schedule, isRunning) => {
+        Alert.alert(
+            isRunning ? 'End and delete this schedule?' : 'Delete this schedule?',
+            isRunning
+                ? 'This schedule is active now. Silent Focus will stay on if another mode is still active.'
+                : 'This weekly schedule will be removed.',
+            [
+                {text: 'Cancel', style: 'cancel'},
+                {
+                    text: isRunning ? 'End and delete' : 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        const payload = {
+                            userId: Constants.commonConstant.appUserId || '',
+                            schedule_id: schedule?.id || '',
+                        };
+                        setIsLoading(true);
+                        ScheduleTimerDataDeleteApiCall(payload);
+                    },
+                },
+            ],
+        );
     };
 
     const onPressEdit = item => {
@@ -303,6 +340,48 @@ export default function HomeScreen() {
                 showApiErrorAlert(Constants.commonConstant.appName, response);
             }
         });
+    };
+
+    // Also makes this account's one-time schedules the ones that automate.
+    const applyOnceResult = result => {
+        if (Array.isArray(result?.schedules)) {
+            setOnceRows(result.schedules.map(normalizeOnceRow));
+        }
+        if (result?.state) {
+            setEngineState(result.state);
+        }
+    };
+
+    const loadOnceSchedules = () =>
+        activateOnceSchedules(Constants.commonConstant.appUserId)
+            .then(applyOnceResult)
+            .catch(() => {});
+
+    // remove=false ends an active schedule now (kept as Cancelled).
+    const changeOnceSchedule = (item, remove) => {
+        const active = item.status === 'ACTIVE';
+        Alert.alert(
+            active ? 'End this schedule now?' : 'Delete this schedule?',
+            active
+                ? 'Silent Focus stops for this one-time schedule. Other active modes stay on.'
+                : `${formatOnceRange(item.startAt, item.endAt)} will be removed.`,
+            [
+                {text: 'Cancel', style: 'cancel'},
+                {
+                    text: active ? 'End now' : 'Delete',
+                    style: 'destructive',
+                    onPress: () =>
+                        cancelOnceSchedule(Constants.commonConstant.appUserId, item.id, remove)
+                            .then(result => {
+                                if (!result?.ok) {
+                                    showAlert(Constants.commonConstant.appName, 'The schedule could not be changed.');
+                                }
+                                applyOnceResult(result);
+                            })
+                            .catch(() => showAlert(Constants.commonConstant.appName, 'The schedule could not be changed.')),
+                },
+            ],
+        );
     };
 
     // Loads schedules and hands them to the native engine, which owns the
@@ -448,7 +527,72 @@ export default function HomeScreen() {
 
     // );
 
+    const renderOnceScheduleItem = item => {
+        // Times decide between native refreshes; cancelled/finished are final.
+        const t = Date.now();
+        const status =
+            item.status === 'CANCELLED' || item.status === 'COMPLETED'
+                ? item.status
+                : t >= item.endAt
+                ? 'COMPLETED'
+                : t >= item.startAt || activeScheduleIds.includes(item.id)
+                ? 'ACTIVE'
+                : 'PENDING';
+        const muted = isDark ? 'rgba(250,250,250,0.65)' : '#555';
+        const action = (label, onPress, a11y) => (
+            <TouchableOpacity
+                style={{margin: 5, minHeight: 32, justifyContent: 'center'}}
+                accessibilityRole="button"
+                accessibilityLabel={a11y}
+                onPress={onPress}>
+                <Text style={{color: link}}>{label}</Text>
+            </TouchableOpacity>
+        );
+        return (
+            <View style={styles.containerView}>
+                <View style={[styles.card, {backgroundColor: isDark ? '#1C1C1C' : '#5555551F'}]}>
+                    <View style={styles.cardContent}>
+                        <Image source={Images.iconClock} style={styles.icon} />
+                        <View style={styles.timeBlock}>
+                            <Text style={[styles.timeRange, {color: isDark ? 'white' : '#1C1C1C'}]}>
+                                {formatOnceRange(item.startAt, item.endAt, t)}
+                            </Text>
+                            <View style={styles.labelBlock}>
+                                <Text style={[styles.everyday, {color: muted}]}>
+                                    {onceStatusLabel(status)}
+                                </Text>
+                                <View
+                                    style={[
+                                        styles.dividerLine,
+                                        {backgroundColor: isDark ? 'rgba(85, 85, 85, 0.35)' : '#D9D9D9'},
+                                    ]}
+                                />
+                                <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end'}}>
+                                    {status === 'PENDING' &&
+                                        action(
+                                            'Edit',
+                                            () =>
+                                                navigation.navigate(screens.EditScheduleTimeScreen, {
+                                                    scheduleData: item,
+                                                }),
+                                            'Edit one-time schedule',
+                                        )}
+                                    {status === 'ACTIVE'
+                                        ? action('End now', () => changeOnceSchedule({...item, status}, false), 'End one-time schedule now')
+                                        : action('Delete', () => changeOnceSchedule({...item, status}, true), 'Delete one-time schedule')}
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
     const renderCustomScheduleItem = ({item}) => {
+        if (item.kind === SCHEDULE_TYPE.ONCE) {
+            return renderOnceScheduleItem(item);
+        }
         const isRunning = activeScheduleIds.includes(String(item.id));
 
         return (
@@ -480,11 +624,7 @@ export default function HomeScreen() {
                                                 : '#555',
                                         },
                                     ]}>
-                                    {item.days === 'Everyday'
-                                        ? 'Everyday'
-                                        : item.days
-                                              .map(day => day.slice(0, 3))
-                                              .join(', ')}
+                                    {weeklyDaysLabel(item.days)}
                                 </Text>
 
                                 <View
@@ -523,7 +663,7 @@ export default function HomeScreen() {
                                         <TouchableOpacity
                                             style={{margin: 5}}
                                             onPress={() => {
-                                                onPressDelete(item.id);
+                                                onPressDelete(item, isRunning);
                                             }}>
                                             <Text style={{color: link}}>
                                                 Delete
@@ -638,7 +778,9 @@ export default function HomeScreen() {
                                         ? formatCountdown(
                                               (silenceEnd - now) / 1000,
                                           )
-                                        : 'ON'
+                                        : status.manualElapsed != null
+                                            ? formatCountdown(status.manualElapsed)
+                                            : 'ON'
                                 }
                             />
                         </TouchableOpacity>
@@ -653,6 +795,11 @@ export default function HomeScreen() {
                             {!!status.detail && (
                                 <Text style={styles.engineStatusDetail}>
                                     {status.detail}
+                                </Text>
+                            )}
+                            {status.manualElapsed != null && (
+                                <Text style={styles.engineStatusDetail}>
+                                    Silent for {formatCountdown(status.manualElapsed)}
                                 </Text>
                             )}
                             {!!status.next && (
@@ -724,12 +871,15 @@ export default function HomeScreen() {
                                 // Legacy rows the old Home created from calendar
                                 // events; calendar automation now reads the
                                 // device calendar directly.
-                                data={arrayEvents.filter(
-                                    item => item.eventType !== 'calendar',
-                                )}
+                                data={[
+                                    ...arrayEvents.filter(
+                                        item => item.eventType !== 'calendar',
+                                    ),
+                                    ...onceRows,
+                                ]}
                                 keyExtractor={item => item.id.toString()}
                                 renderItem={renderCustomScheduleItem}
-                                extraData={arrayEvents}
+                                extraData={[arrayEvents, onceRows, now, engineState]}
                                 keyboardShouldPersistTaps={'handled'}
                                 scrollEnabled={false}
                                 ListEmptyComponent={

@@ -51,6 +51,8 @@ const SOURCE_LABEL = {
 const REPLY_REASON = {
     NO_REPLY_ACTION: "This app's notifications have no reply action",
     POSSIBLE_AUTO_REPLY_LOOP: 'Looked like another automatic reply',
+    CONVERSATION_METADATA_MISSING: 'Conversation type could not be verified',
+    AMBIGUOUS_SENDER: 'Sender identity was ambiguous',
     RATE_LIMIT: 'Hourly auto-reply limit reached',
     COOLDOWN: 'Already replied to this sender recently',
     DISABLED: 'Auto reply is off',
@@ -63,12 +65,20 @@ const CALL_REASON = {
     BELOW_THRESHOLD: 'Silenced',
     COOLDOWN: 'Silenced (urgent call already allowed recently)',
     DISABLED: 'Silenced',
+    // #5: seen through the phone state only (no call-screening access for
+    // this call), so the number isn't available.
+    NOT_SCREENED: 'Silenced',
 };
+
+// #5: cellular calls learn whether they were answered or missed.
+const CELL_CALL_STATE = {ANSWERED: 'Answered', MISSED: 'Missed'};
+const withCallState = (subtitle, e) =>
+    join([subtitle, CELL_CALL_STATE[e.callState] || null]);
 
 const replyOutcome = e => {
     switch (e.replyStatus) {
         case 'SENT':
-            return 'Auto reply sent';
+            return 'Reply action accepted';
         case 'FAILED':
             return 'Auto reply failed';
         case 'UNSUPPORTED':
@@ -154,19 +164,22 @@ const describeEventParts = e => {
         case 'CALENDAR_ENDED':
             return {title: 'Calendar silence ended', subtitle: null};
         case 'INCOMING_CALL':
-            return {title: `Call from ${e.caller || 'Unknown'}`, subtitle: CALL_REASON[e.detail] || 'Silenced'};
+            return {
+                title: e.detail === 'NOT_SCREENED' && !e.caller ? 'Incoming call' : `Call from ${e.caller || 'Unknown'}`,
+                subtitle: withCallState(CALL_REASON[e.detail] || 'Silenced', e),
+            };
         // handling 'alert_only': Emergency Call Handling kept Do Not Disturb on
         // and showed Silent Focus's own alert instead of letting the call ring.
         case 'EMERGENCY_BREAKTHROUGH':
             return {
                 title: e.handling === 'alert_only' ? 'Emergency call alert' : 'Emergency contact allowed',
-                subtitle: [e.contactName, e.caller].filter(Boolean).join(' · ') || null,
+                subtitle: withCallState([e.contactName, e.caller].filter(Boolean).join(' · ') || null, e),
             };
         case 'URGENT_REPEAT_CALLER': {
             const after = e.repeatCount ? ` after ${e.repeatCount} calls` : '';
             return {
                 title: e.handling === 'alert_only' ? `Urgent call alert${after}` : `Urgent caller allowed${after}`,
-                subtitle: e.caller || null,
+                subtitle: withCallState(e.caller || null, e),
             };
         }
         case 'WHATSAPP_CALL': {
@@ -202,7 +215,7 @@ const describeEventParts = e => {
         }
         case 'AUTO_REPLY_SENT':
         case 'AUTO_REPLY_FAILED': {
-            const title = type === 'AUTO_REPLY_SENT' ? 'Auto reply sent' : 'Auto reply failed';
+            const title = type === 'AUTO_REPLY_SENT' ? 'Reply action accepted' : 'Auto reply failed';
             const who = nameOf(e);
             return {title, subtitle: join([who ? `To ${who}` : null, messageSource(e)])};
         }

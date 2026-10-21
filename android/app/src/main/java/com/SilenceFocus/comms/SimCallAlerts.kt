@@ -34,15 +34,15 @@ object SimCallAlerts {
     const val STALE_MS = 10 * 60_000L
 
     /** The alert currently showing: salted caller key (never the number), kind, urgent count, time. */
-    data class Record(val key: String, val kind: BreakthroughKind, val count: Int, val at: Long) {
-        fun encode(): String = FieldCodec.encode(listOf(listOf(key, kind.name, count.toString(), at.toString())))
+    data class Record(val key: String, val kind: BreakthroughKind, val count: Int, val at: Long, val contactName: String? = null) {
+        fun encode(): String = FieldCodec.encode(listOf(listOf(key, kind.name, count.toString(), at.toString(), contactName.orEmpty())))
 
         companion object {
             fun decode(raw: String?): Record? = FieldCodec.decode(raw).firstOrNull()?.let { f ->
                 if (f.size < 4) return@let null
                 val kind = runCatching { BreakthroughKind.valueOf(f[1]) }.getOrNull() ?: return@let null
                 val at = f[3].toLongOrNull() ?: return@let null
-                Record(f[0], kind, f[2].toIntOrNull() ?: 0, at)
+                Record(f[0], kind, f[2].toIntOrNull() ?: 0, at, f.getOrNull(4)?.ifEmpty { null })
             }
         }
     }
@@ -64,13 +64,18 @@ object SimCallAlerts {
         else -> EndAction.ENDED_NOTICE
     }
 
-    /** Alert text: never a name or number (lock screen). */
-    fun text(kind: BreakthroughKind, count: Int, ended: Boolean): Pair<String, String> = when {
+    /** Private alert text; emergency names are used only after a confident saved-contact match. */
+    fun text(kind: BreakthroughKind, count: Int, ended: Boolean, contactName: String? = null): Pair<String, String> {
+        val name = if (kind == BreakthroughKind.EMERGENCY_CONTACT) WhatsAppEmergency.displayName(contactName) else null
+        return when {
         ended && kind == BreakthroughKind.EMERGENCY_CONTACT ->
-            "Emergency call ended" to "Your emergency contact called. Call them back if needed."
+            "Emergency phone call ended" to (name?.let { "$it called you. Call them back if needed." }
+                ?: "Your emergency contact called. Call them back if needed.")
         ended -> "Urgent call ended" to "Someone called $count times. Call them back if needed."
         kind == BreakthroughKind.EMERGENCY_CONTACT ->
-            "Emergency call" to "Your emergency contact is calling. Answer on your phone's call screen."
+            "Emergency phone call" to (name?.let { "$it is calling. Answer on your phone's call screen." }
+                ?: "Your emergency contact is calling. Answer on your phone's call screen.")
         else -> "Urgent call" to "Someone has called $count times. Answer on your phone's call screen."
+        }
     }
 }

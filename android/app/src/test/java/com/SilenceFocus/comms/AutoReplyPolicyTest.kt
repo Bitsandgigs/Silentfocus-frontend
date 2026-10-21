@@ -135,6 +135,17 @@ class AutoReplyPolicyTest {
         assertFalse(AutoReplyPolicy.looksLikeOurTemplate("hello?", AutoReplySettings()))
     }
 
+    @Test fun `missing conversation metadata and conflicting sender identities fail closed`() {
+        val unknownConversation = decide(m = msg.copy(conversationKnown = false))
+        assertEquals(ReplyStatus.SKIPPED, unknownConversation.status)
+        assertEquals(AutoReplyPolicy.REASON_CONVERSATION_UNKNOWN, unknownConversation.reason)
+        val ambiguous = decide(m = msg.copy(identityAmbiguous = true))
+        assertEquals(ReplyStatus.SKIPPED, ambiguous.status)
+        assertEquals(AutoReplyPolicy.REASON_AMBIGUOUS_SENDER, ambiguous.reason)
+        assertFalse(unknownConversation.shouldSend)
+        assertFalse(ambiguous.shouldSend)
+    }
+
     @Test fun `hourly cap and unknown sender`() {
         assertEquals(AutoReplyPolicy.REASON_RATE_LIMIT, decide(lastHour = AutoReplyPolicy.MAX_REPLIES_PER_HOUR).reason)
         assertEquals(AutoReplyPolicy.REASON_NO_SENDER, decide(m = msg.copy(senderKey = null)).reason)

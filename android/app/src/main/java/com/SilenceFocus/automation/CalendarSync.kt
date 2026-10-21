@@ -18,8 +18,9 @@ import android.util.Log
  * Idempotent: every sync replaces the cache with the current occurrences in
  * [LOOKBACK_MS, LOOKAHEAD_MS], keyed calendarId:eventId:begin, so edited or
  * deleted events simply change or disappear and nothing is duplicated.
- * Only ids, times and the all-day flag are read - never titles, notes,
- * locations or attendees.
+ * The provider occurrence title, ids, times and all-day flag are read. The
+ * title stays in the device-local occurrence cache only; notes, locations and
+ * attendees are never read.
  *
  * Round 3 (#4): every calendar Android's Calendar Provider holds on this
  * phone is available - Google, Samsung, Exchange/Outlook, local and any
@@ -170,6 +171,7 @@ object CalendarSync {
             CalendarContract.Instances.ALL_DAY,
             CalendarContract.Instances.STATUS,
             CalendarContract.Instances.SELF_ATTENDEE_STATUS,
+            CalendarContract.Instances.TITLE,
         )
         // Default: visible calendars only. A calendar the user chose counts
         // even if hidden in their calendar app. Cancelled events and ones
@@ -185,7 +187,13 @@ object CalendarSync {
                 val end = c.getLong(3)
                 if (end <= begin) continue
                 val key = "${c.getLong(0)}:${c.getLong(1)}:$begin"
-                events[key] = CalendarEvent(key, begin, end, c.getInt(4) == 1)
+                events[key] = CalendarEvent(
+                    key = key,
+                    begin = begin,
+                    end = end,
+                    allDay = c.getInt(4) == 1,
+                    title = CalendarTitles.normalize(c.getString(7)),
+                )
             }
         }
         return events.values.toList()

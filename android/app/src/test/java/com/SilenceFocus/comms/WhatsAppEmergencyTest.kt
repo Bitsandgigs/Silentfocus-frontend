@@ -110,6 +110,12 @@ class WhatsAppEmergencyTest {
         assertNull(E.match(twoMums, CallerIds(title = "Mum"), enabled = true, nameMatching = true))
     }
 
+    @Test fun `ambiguous number evidence never picks the first emergency contact`() {
+        val ambiguous = listOf(mum, EmergencyContact("c3", "Someone else", "+449876543210"))
+        assertNull(E.match(ambiguous, CallerIds(title = "9876543210"), true, true))
+        assertNull(E.match(ambiguous, CallerIds(contactNumbers = listOf("9876543210")), true, true))
+    }
+
     @Test fun `a known number that is not an emergency contact is never overridden by the name`() {
         // Someone else saved as "Mum" (or a changed name): the number decides.
         assertNull(match(CallerIds(shortcutId = "15550199@s.whatsapp.net", title = "Mum"), nameMatching = true))
@@ -199,10 +205,16 @@ class WhatsAppEmergencyTest {
                 assertFalse(s, Regex("\\d{3,}").containsMatchIn(s))
             }
         }
-        // Round 4: the alert never shows the name, locked or unlocked (lock-screen settings vary).
-        Kind.values().forEach { k ->
-            val (t, x) = E.privateText(k, "WhatsApp", "Mum", 3)
-            assertFalse(t + x, (t + x).contains("Mum"))
+        // Client feedback: only an emergency contact is named, and only in the
+        // private (unlocked) version; titles never carry a name.
+        listOf(false, true).forEach { missed ->
+            val (t, x) = E.privateText(Kind.EMERGENCY, "WhatsApp", "Mum", 0, missed)
+            assertFalse(t, t.contains("Mum"))
+            assertTrue(x, x.contains("Mum"))
+            val (u, y) = E.privateText(Kind.URGENT, "WhatsApp", "Mum", 3, missed)
+            assertFalse(u + y, (u + y).contains("Mum"))
+            val (pt, px) = E.publicText(Kind.EMERGENCY, "WhatsApp", missed)
+            assertFalse(pt + px, (pt + px).contains("Mum"))
         }
         assertTrue(E.privateText(Kind.URGENT, "WhatsApp Business", null, 3).second.contains("3 times"))
     }
@@ -268,10 +280,21 @@ class WhatsAppEmergencyTest {
 
     private fun Match(c: EmergencyContact, m: Method) = E.Match(c, m)
 
-    @Test fun `missed-call alert text says call back and never names the caller`() {
-        val (t, x) = E.privateText(Kind.EMERGENCY, "WhatsApp", "Asha", 0, missed = true)
-        assertEquals("Missed emergency call on WhatsApp", t)
-        assertFalse(x.contains("Asha"))
+    @Test fun `missed emergency alert names the contact, generic without a usable name`() {
+        val (t, x) = E.privateText(Kind.EMERGENCY, "WhatsApp", "Faishal Malik", 0, missed = true)
+        assertEquals("Missed emergency WhatsApp call", t)
+        assertEquals("Faishal Malik called you on WhatsApp.", x)
+        val (bt, bx) = E.privateText(Kind.EMERGENCY, "WhatsApp Business", "Asha", 0, missed = true)
+        assertEquals("Missed emergency WhatsApp Business call", bt)
+        assertEquals("Asha called you on WhatsApp Business.", bx)
+        // No name, a blank one or a number: the safe generic text.
+        listOf(null, "", "   ", "+41 79 123 45 67", "\u200E").forEach { who ->
+            assertEquals("Your emergency contact just called. Call them back.",
+                E.privateText(Kind.EMERGENCY, "WhatsApp", who, 0, missed = true).second)
+        }
+        assertEquals("Asha is calling you on WhatsApp.", E.privateText(Kind.EMERGENCY, "WhatsApp", " Asha  ", 0).second)
+        // Long names are shortened, never cut mid-surrogate into garbage.
+        assertTrue(E.displayName("A".repeat(60))!!.length <= 40)
         val (u, y) = E.publicText(Kind.URGENT, "WhatsApp", missed = true)
         assertEquals("Urgent missed calls on WhatsApp", u)
         assertEquals("Someone called repeatedly.", y)

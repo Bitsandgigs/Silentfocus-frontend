@@ -163,12 +163,14 @@ class SimCallModeTest {
         assertNull(SimCallAlerts.Record.decode("garbage"))
     }
 
-    @Test fun `alert text never names the caller and says how to answer`() {
+    @Test fun `private emergency alert names a confident contact while generic text stays private-safe`() {
         val (t, x) = SimCallAlerts.text(BreakthroughKind.EMERGENCY_CONTACT, 0, ended = false)
-        assertEquals("Emergency call", t)
+        assertEquals("Emergency phone call", t)
         assertTrue(x.contains("call screen"))
+        assertTrue(SimCallAlerts.text(BreakthroughKind.EMERGENCY_CONTACT, 0, false, "Mom").second.startsWith("Mom is calling"))
+        assertTrue(SimCallAlerts.text(BreakthroughKind.EMERGENCY_CONTACT, 0, true, "Mom").second.startsWith("Mom called you"))
         assertEquals("Urgent call" to "Someone has called 2 times. Answer on your phone's call screen.", SimCallAlerts.text(BreakthroughKind.URGENT_REPEAT_CALLER, 2, false))
-        assertEquals("Emergency call ended", SimCallAlerts.text(BreakthroughKind.EMERGENCY_CONTACT, 0, ended = true).first)
+        assertEquals("Emergency phone call ended", SimCallAlerts.text(BreakthroughKind.EMERGENCY_CONTACT, 0, ended = true).first)
         assertFalse(x.contains("Mom"))
     }
 }

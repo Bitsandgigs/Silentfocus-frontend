@@ -17,7 +17,8 @@ test('zonesActive is exactly zonesEnabledFor for every combination (no semantic 
 });
 
 test('legacy account (not confirmed): needs Location AND Custom, and says so', () => {
-    const paused = describeControlModes({locationMode: false, customMode: true, customModeConfirmed: false});
+    // Location Mode visible (gate on); the hidden case is in clientFeedbackFinal.test.js.
+    const paused = describeControlModes({locationMode: false, customMode: true, customModeConfirmed: false}, false, true);
     expect(paused.zonesActive).toBe(false);
     expect(paused.legacyRule).toBe(true);
     expect(paused.customStatus).toMatch(/also need Location Mode/);

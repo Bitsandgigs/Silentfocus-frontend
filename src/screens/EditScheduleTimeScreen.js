@@ -28,7 +28,9 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import {controlColors} from '../utils/theme/controlColors';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {DAY_NAMES, buildSchedulePayload, toggleDay} from '../utils/scheduleRules';
+import {DAY_NAMES, SCHEDULE_TYPE, buildSchedulePayload, toIsoDays, toggleDay} from '../utils/scheduleRules';
+import ScheduleTypeSelector, {WeeklyHint} from '../componentes/ScheduleTypeSelector';
+import OnceScheduleForm, {confirmAndSaveOnce} from '../componentes/OnceScheduleForm';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function EditScheduleTimeScreen() {
@@ -37,6 +39,13 @@ export default function EditScheduleTimeScreen() {
 
     const route = useRoute();
     const {scheduleData} = route.params || {};
+    // The type of an existing schedule never changes here: weekly stays
+    // weekly (server), one-time stays one-time (this phone).
+    const isOnce = scheduleData?.kind === SCHEDULE_TYPE.ONCE;
+    const [onceWindow, setOnceWindow] = useState(() => ({
+        startAt: Number(scheduleData?.startAt) || 0,
+        endAt: Number(scheduleData?.endAt) || 0,
+    }));
 
     // Variable
     const isDark = useColorScheme() === 'dark';
@@ -73,7 +82,7 @@ export default function EditScheduleTimeScreen() {
     // Prefill from Home's row: times arrive as 24h "HH:mm[:ss]" and are
     // shown/submitted like the create screen ("hh:mm A" -> "HH:mm").
     useEffect(() => {
-        if (!scheduleData) {
+        if (!scheduleData || isOnce) {
             return;
         }
         const today = moment().format('YYYY-MM-DD');
@@ -93,11 +102,10 @@ export default function EditScheduleTimeScreen() {
         if (scheduleData.endTime) {
             prefill(scheduleData.endTime, setToTime, setToTimeString);
         }
-        const days = Array.isArray(scheduleData.days)
-            ? scheduleData.days
-            : scheduleData.days === 'Everyday'
-            ? DAY_NAMES
-            : [];
+        // The API has returned both arrays and comma-separated strings over
+        // time. Resolve either shape through the same ISO-day parser used by
+        // the native-engine payload so editing never loses selected days.
+        const days = toIsoDays(scheduleData.days).map(iso => DAY_NAMES[iso - 1]);
         setArraySelectedDays(days.map(day => ({day, status: true})));
     }, [scheduleData]);
 
@@ -196,6 +204,18 @@ export default function EditScheduleTimeScreen() {
         });
 
     const handleConfirmPress = async () => {
+        if (isOnce) {
+            const saved = await confirmAndSaveOnce({
+                userId: Constants.commonConstant.appUserId,
+                id: scheduleData.id,
+                startAt: onceWindow.startAt,
+                endAt: onceWindow.endAt,
+            });
+            if (saved) {
+                navigation.goBack();
+            }
+            return;
+        }
         const selectedDays = arraySelectedDays
             .filter(item => item.status)
             .map(item => item.day)
@@ -275,6 +295,22 @@ export default function EditScheduleTimeScreen() {
                             {localize('SF28')}
                         </Text>
 
+                        <ScheduleTypeSelector
+                            value={isOnce ? SCHEDULE_TYPE.ONCE : SCHEDULE_TYPE.WEEKLY}
+                            locked
+                            palette={palette}
+                            isDark={isDark}
+                        />
+
+                        {isOnce ? (
+                            <OnceScheduleForm
+                                startAt={onceWindow.startAt}
+                                endAt={onceWindow.endAt}
+                                onChange={setOnceWindow}
+                                palette={palette}
+                                isDark={isDark}
+                            />
+                        ) : (
                         <View style={styles.centerView}>
                             <Text
                                 style={[
@@ -407,16 +443,27 @@ export default function EditScheduleTimeScreen() {
                                     }
                                 />
                             </View>
+                            <WeeklyHint
+                                hasDays={arraySelectedDays.some(item => item.status)}
+                                overnight={
+                                    fromTimeString !== '' &&
+                                    toTimeString !== '' &&
+                                    minutesOfDay(toTime) < minutesOfDay(fromTime)
+                                }
+                                isDark={isDark}
+                            />
                         </View>
+                        )}
                     </ScrollView>
                     <CustomButton
                         title={localize('SF16')}
                         color={palette.confirmBg}
                         onPress={handleConfirmPress}
                         disabled={
-                            fromTimeString === '' ||
-                            toTimeString === '' ||
-                            !arraySelectedDays.some(item => item.status)
+                            !isOnce &&
+                            (fromTimeString === '' ||
+                                toTimeString === '' ||
+                                !arraySelectedDays.some(item => item.status))
                         }
                     />
                 </View>

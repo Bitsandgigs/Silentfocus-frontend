@@ -32,6 +32,7 @@ import {
     syncAutomationSettings,
 } from '../utils/automationSync';
 import {ensureLocationAutomationPermissions} from '../utils/locationPermissions';
+import {FEATURES} from '../config/features';
 import {Constants, Images} from '../utils/theme';
 import {showAlert, showApiErrorAlert} from '../function/Alert';
 import screens from '../utils/theme/screens';
@@ -149,17 +150,29 @@ const SettingsScreen = () => {
     // The Auto Reply screen has no on/off switch; this is the only place to
     // turn it on, so it carries the notification-access prompt.
     const onToggleAutoReply = v => {
-        if (v && !comms.notificationAccess) {
+        if (!v) {
+            saveAutoReply({enabled: false});
+            return;
+        }
+        if (!comms.notificationAccess) {
             Alert.alert(
                 'Notification access needed',
-                'Auto reply works through the reply button in messaging notifications, so Silent Focus needs notification access. Message text is never stored or uploaded.',
+                'Auto Reply cannot run without notification access. Turn access on, return to Silent Focus, and enable Auto Reply again. It will stay off for now.',
                 [
                     {text: 'Not now', style: 'cancel'},
                     {text: 'Open settings', onPress: openNotificationAccessSettings},
                 ],
             );
+            return;
         }
-        saveAutoReply({enabled: v});
+        Alert.alert(
+            'Enable automatic replies?',
+            'While Silent Focus is active, compatible messaging notifications can be replied to automatically using your saved message. This can send a real reply without another confirmation. Group or unclear conversations are skipped; delivery cannot be confirmed.',
+            [
+                {text: 'Cancel', style: 'cancel'},
+                {text: 'Enable', onPress: () => saveAutoReply({enabled: true})},
+            ],
+        );
     };
 
     // `previous`: the modes before this optimistic toggle, restored when
@@ -299,6 +312,9 @@ const SettingsScreen = () => {
                         SELECT YOUR DESIRED SILENT FOCUS MODE
                     </Text>
 
+                    {/* Location Mode (public places) is hidden for now: see
+                        src/config/features.js. Its saved preference is kept. */}
+                    {FEATURES.LOCATION_MODE_PUBLIC_PLACES && (
                     <View style={styles.containerView}>
                         <View
                             style={[
@@ -356,6 +372,7 @@ const SettingsScreen = () => {
                             </View>
                         </View>
                     </View>
+                    )}
 
                     <View style={styles.containerView}>
                         <View

@@ -28,7 +28,14 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import {controlColors} from '../utils/theme/controlColors';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
-import {buildSchedulePayload, toggleDay} from '../utils/scheduleRules';
+import {
+    SCHEDULE_TYPE,
+    buildSchedulePayload,
+    defaultOnceWindow,
+    toggleDay,
+} from '../utils/scheduleRules';
+import ScheduleTypeSelector, {WeeklyHint} from '../componentes/ScheduleTypeSelector';
+import OnceScheduleForm, {confirmAndSaveOnce} from '../componentes/OnceScheduleForm';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 
 export default function ScheduleTimeScreen() {
@@ -52,6 +59,9 @@ export default function ScheduleTimeScreen() {
     ];
 
     // useState
+    // Client feedback: "Once" needs no weekday; "Every week" repeats on the chosen days.
+    const [scheduleType, setScheduleType] = useState(SCHEDULE_TYPE.ONCE);
+    const [onceWindow, setOnceWindow] = useState(() => defaultOnceWindow());
     const [arraySelectedDays, setArraySelectedDays] = useState([]);
 
     const [fromTime, setFromTime] = useState(
@@ -140,6 +150,17 @@ export default function ScheduleTimeScreen() {
         });
 
     const handleConfirmPress = async () => {
+        if (scheduleType === SCHEDULE_TYPE.ONCE) {
+            const saved = await confirmAndSaveOnce({
+                userId: Constants.commonConstant.appUserId,
+                startAt: onceWindow.startAt,
+                endAt: onceWindow.endAt,
+            });
+            if (saved) {
+                navigation.goBack();
+            }
+            return;
+        }
         const selectedDays = arraySelectedDays
             .filter(item => item.status)
             .map(item => item.day)
@@ -216,6 +237,22 @@ export default function ScheduleTimeScreen() {
                             {localize('SF3')}
                         </Text>
 
+                        <ScheduleTypeSelector
+                            value={scheduleType}
+                            onChange={setScheduleType}
+                            palette={palette}
+                            isDark={isDark}
+                        />
+
+                        {scheduleType === SCHEDULE_TYPE.ONCE ? (
+                            <OnceScheduleForm
+                                startAt={onceWindow.startAt}
+                                endAt={onceWindow.endAt}
+                                onChange={setOnceWindow}
+                                palette={palette}
+                                isDark={isDark}
+                            />
+                        ) : (
                         <View style={styles.centerView}>
                             <Text
                                 style={[
@@ -348,16 +385,27 @@ export default function ScheduleTimeScreen() {
                                     }
                                 />
                             </View>
+                            <WeeklyHint
+                                hasDays={arraySelectedDays.some(item => item.status)}
+                                overnight={
+                                    fromTimeString !== '' &&
+                                    toTimeString !== '' &&
+                                    minutesOfDay(toTime) < minutesOfDay(fromTime)
+                                }
+                                isDark={isDark}
+                            />
                         </View>
+                        )}
                     </ScrollView>
                     <CustomButton
                         title={localize('SF16')}
                         color={palette.confirmBg}
                         onPress={handleConfirmPress}
                         disabled={
-                            fromTimeString === '' ||
-                            toTimeString === '' ||
-                            !arraySelectedDays.some(item => item.status)
+                            scheduleType === SCHEDULE_TYPE.WEEKLY &&
+                            (fromTimeString === '' ||
+                                toTimeString === '' ||
+                                !arraySelectedDays.some(item => item.status))
                         }
                     />
                 </View>

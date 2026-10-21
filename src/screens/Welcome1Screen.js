@@ -227,8 +227,8 @@ const WelcomeScreen1 = () => {
           />
 
           <Text style={[styles.description, {color: descColor}]}>
-            Silent Focus automatically mutes your phone in libraries, offices,
-            religious places, and during meetings.
+            Silent Focus can mute your phone in Custom Silent Zones you create,
+            such as your office, and during meetings.
           </Text>
         </Animated.View>
 

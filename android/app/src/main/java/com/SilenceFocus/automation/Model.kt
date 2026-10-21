@@ -205,7 +205,9 @@ data class ZoneRule(
 
 /**
  * One occurrence of a device-calendar event. Only what automation needs is
- * kept: no title, description, location or attendees. [key] is
+ * kept: the provider title plus no description, location or attendees. The
+ * title remains device-local in [EngineStore] so a process restart can render
+ * the same occurrence that owns DND; it is never journaled or uploaded. [key] is
  * "calendarId:eventId:occurrenceBegin", stable across syncs. For all-day
  * events [begin]/[end] are UTC midnights (as CalendarContract stores them)
  * and are mapped to local days at evaluation time.
@@ -215,6 +217,7 @@ data class CalendarEvent(
     val begin: Long,
     val end: Long,
     val allDay: Boolean,
+    val title: String? = null,
 )
 
 /**

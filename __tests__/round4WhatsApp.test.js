@@ -285,10 +285,16 @@ describe('notification text (#C)', () => {
         expect(ensure).toMatch(/dndAccess && !existing\.canBypassDnd\(\)/);
     });
 
+    // Client feedback (final round): the emergency contact's name is shown
+    // in the private (unlocked) text; titles and the lock-screen version
+    // stay name-free, urgent callers stay unnamed.
     test('real alerts: the title says it all; lock screen has no name', () => {
-        expect(emergency).toContain('kind == Kind.EMERGENCY -> "Emergency call on $app" to "Your emergency contact is calling."');
+        expect(emergency).toContain('kind == Kind.EMERGENCY -> "Emergency call on $app" to (name?.let { "$it is calling you on $app." } ?: "Your emergency contact is calling.")');
         expect(emergency).toContain('else -> "Urgent call on $app" to "Someone called $repeatCount times."');
-        expect(emergency).toContain('"Missed emergency call on $app" to "Your emergency contact just called. Call them back."');
+        expect(emergency).toContain('(name?.let { "$it called you on $app." } ?: "Your emergency contact just called. Call them back.")');
+        expect(emergency).toContain('fun missedEmergencyTitle(app: String) = "Missed emergency $app call"');
+        expect(emergency).toContain('val name = if (kind == Kind.EMERGENCY) displayName(who) else null');
+        expect(emergency).toMatch(/fun publicText\(kind: Kind, app: String, missed: Boolean = false\): Pair<String, String> = privateText\(kind, app, null, 0, missed\)/);
         expect(alert).toMatch(/setPublicVersion\(publicVersion\)/);
         expect(alert).toMatch(/BigTextStyle\(\)\.bigText\(text\)/);
     });

@@ -131,6 +131,11 @@ class CommsStore(private val kv: KeyValue) {
         get() = SimCallAlerts.Record.decode(kv.getString(KEY_SIM_ALERT))
         set(value) = kv.putString(KEY_SIM_ALERT, value?.encode())
 
+    /** #5: the cellular call whose Activity row is being completed (answered / missed). */
+    var cellularCall: CellularCallLog.Ringing?
+        get() = CellularCallLog.Ringing.decode(kv.getString(KEY_CELL_CALL))
+        set(value) = kv.putString(KEY_CELL_CALL, value?.encode())
+
     var repeatCallState: RepeatCallState
         get() {
             val calls = FieldCodec.decode(kv.getString(KEY_CALLS)).mapNotNull { f ->
@@ -146,7 +151,7 @@ class CommsStore(private val kv: KeyValue) {
             kv.putString(KEY_COOLDOWNS, FieldCodec.encode(value.cooldowns.map { listOf(it.key, it.value.toString()) }))
         }
 
-    fun clearRecentCalls() = kv.remove(listOf(KEY_CALLS, KEY_COOLDOWNS, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED, KEY_WA_EPISODES, KEY_WA_ALERTS_SENT, KEY_WA_ALERT_AT, KEY_SIM_ALERT))
+    fun clearRecentCalls() = kv.remove(listOf(KEY_CALLS, KEY_COOLDOWNS, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED, KEY_WA_EPISODES, KEY_WA_ALERTS_SENT, KEY_WA_ALERT_AT, KEY_SIM_ALERT, KEY_CELL_CALL))
 
     /** #6: WhatsApp repeat-caller state (hashed `wa:` keys + times), separate from cellular. */
     var waRepeatState: RepeatCallState
@@ -235,7 +240,7 @@ class CommsStore(private val kv: KeyValue) {
             KEY_AR_MESSAGING, KEY_AR_DEFAULT, KEY_AR_COOLDOWN, KEY_AR_ZONES, KEY_AR_MARKS,
             KEY_AR_TIMES, KEY_SEEN, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED,
             KEY_WA_ALERTS, KEY_WA_NAME_MATCH, KEY_WA_ALERTS_SENT, KEY_WA_EPISODES, KEY_WA_ALERT_AT,
-            KEY_SIM_CALL_MODE, KEY_SIM_ALERT,
+            KEY_SIM_CALL_MODE, KEY_SIM_ALERT, KEY_CELL_CALL,
             WhatsAppCallCheck.KEY,
         ),
     )
@@ -269,6 +274,7 @@ class CommsStore(private val kv: KeyValue) {
         private const val KEY_WA_NAME_MATCH = "wa_name_match"
         private const val KEY_SIM_CALL_MODE = "sim_call_mode"
         private const val KEY_SIM_ALERT = "sim_alert"
+        private const val KEY_CELL_CALL = "cellular_call"
         private const val KEY_THRESHOLD_MIGRATED = "urgent_threshold_v2"
         private const val KEY_WA_ALERTS_SENT = "wa_alerts_sent"
     }

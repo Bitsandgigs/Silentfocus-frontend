@@ -58,6 +58,21 @@ class SessionHistoryTest {
         assertEquals("SCHEDULE", s[1].primarySource)
     }
 
+    @Test fun `backward clock correction never creates a negative session`() {
+        var s = SessionTracker.onEvaluate(emptyList(), true, t0, "SCHEDULE", listOf(sched()), t0)
+        s = SessionTracker.onEvaluate(s, false, 0, null, emptyList(), t0 - 60 * min)
+        assertEquals(t0, s.single().end)
+    }
+
+    @Test fun `forward clock correction closes finite rules at their expected end`() {
+        assertEquals(
+            t0 + 60 * min,
+            SessionTracker.closeTime(t0 + 7 * 24 * 60 * min, true, listOf(t0 + 60 * min)),
+        )
+        assertEquals(t0 + 7 * 24 * 60 * min, SessionTracker.closeTime(t0 + 7 * 24 * 60 * min, true, listOf(null)))
+        assertEquals(t0 + 7 * 24 * 60 * min, SessionTracker.closeTime(t0 + 7 * 24 * 60 * min, false, listOf(t0 + 60 * min)))
+    }
+
     @Test fun `history is bounded by count and age (server-acknowledged sessions)`() {
         var s = emptyList<SilenceSession>()
         repeat(150) { i ->

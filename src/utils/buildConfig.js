@@ -25,3 +25,8 @@ export const DEBUG_SERVER_WRITES_ACCOUNT_ID =
 // session sync, auto-reply push, logout pre-sync) are off even though it is
 // not a debug build. User actions (sign-in, saving settings) still write.
 export const AUTOMATIC_UPLOADS_DISABLED = constants.automaticUploadsDisabled === true;
+
+// Compile-time opt-in for the isolated weekly-schedule emulator QA adapter.
+// Android Release hardcodes this false; normal FieldTest builds omit the
+// Gradle property and are false as well.
+export const SCHEDULE_QA_MOCK = constants.scheduleQaMock === true;

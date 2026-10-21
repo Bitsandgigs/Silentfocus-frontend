@@ -29,7 +29,7 @@ const onboardingData = [
   {
     title: 'TAKE BACK\nCONTROL',
     description:
-      'Silent Focus automatically mutes your phone in libraries, offices, religious places, and during meetings.',
+      'Silent Focus can mute your phone in Custom Silent Zones you create, such as your office, and during meetings.',
     image: require('../assets/images/home.png'),
     styles: {width: wp('90%'), height: hp('40%')},
   },

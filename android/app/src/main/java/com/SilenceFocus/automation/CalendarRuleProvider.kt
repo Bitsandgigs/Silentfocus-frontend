@@ -36,7 +36,7 @@ class CalendarRuleProvider(
         usable().mapNotNull { e ->
             val (start, end) = effectiveWindow(e, tz)
             if (nowMillis in start until end) {
-                ActiveRule(RuleSource.CALENDAR, e.key, null, start, end)
+                ActiveRule(RuleSource.CALENDAR, e.key, e.title, start, end)
             } else {
                 null
             }

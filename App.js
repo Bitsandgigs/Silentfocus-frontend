@@ -10,6 +10,7 @@ import {ThemeProvider} from './src/context/ThemeContext';
 import KeyboardManager from 'react-native-keyboard-manager';
 import OfflineBanner from './src/componentes/OfflineBanner';
 import ErrorBoundary from './src/componentes/ErrorBoundary';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 export default function App() {
     // Status-bar icons follow the theme (dark icons were invisible in dark mode).
@@ -43,6 +44,7 @@ export default function App() {
 
     return (
         <>
+            <SafeAreaProvider>
             <ThemeProvider>
                 <StatusBar
                     backgroundColor={isDark ? '#111111' : Colors.white}
@@ -57,6 +59,7 @@ export default function App() {
                     <OfflineBanner />
                 </ContextProvider>
             </ThemeProvider>
+            </SafeAreaProvider>
         </>
     );
 }

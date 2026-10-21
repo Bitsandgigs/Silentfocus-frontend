@@ -28,6 +28,15 @@ export const formatCountdown = seconds => {
     return `${h}:${m}:${sec}`;
 };
 
+// The start anchor is owned and persisted by the Android engine. JS only
+// redraws this derived value while the Home tab is visible.
+export const manualElapsedSeconds = (state, now = Date.now()) => {
+    if (!state?.silentActive || state.source !== 'MANUAL') return null;
+    const started = Number(state.manualSessionStartedAt);
+    return Number.isFinite(started) && started > 0
+        ? Math.max(0, Math.floor((now - started) / 1000)) : null;
+};
+
 // When the current silence is expected to end, if known: the latest end of
 // the timed windows (schedule/calendar) running now. Manual ON and zone
 // visits have no known end.
@@ -144,8 +153,14 @@ export const describeEngineState = (state, now = Date.now()) => {
             detail = place?.name ? `Public place: ${place.name}` : 'Public place';
         } else if (state.source === 'SCHEDULE' || state.source === 'CALENDAR') {
             const end = silenceEndsAt(state);
-            const label =
-                state.source === 'CALENDAR' ? 'Calendar event' : 'By schedule';
+            const calendarRule = state.source === 'CALENDAR'
+                ? (state.activeRules || [])
+                    .filter(r => r.source === 'CALENDAR')
+                    .sort((a, b) => (b.windowStart || 0) - (a.windowStart || 0))[0]
+                : null;
+            const label = state.source === 'CALENDAR'
+                ? (calendarRule?.name || 'Calendar event')
+                : 'By schedule';
             detail = end ? `${label} until ${formatWhen(end, now)}` : label;
         }
     } else if (state.desiredSilent) {
@@ -173,5 +188,6 @@ export const describeEngineState = (state, now = Date.now()) => {
         warning,
         locationIssue: locationIssue(state),
         calendarIssue: calendarIssue(state),
+        manualElapsed: manualElapsedSeconds(state, now),
     };
 };

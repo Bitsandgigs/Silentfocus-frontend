@@ -115,6 +115,7 @@ const MapScreen = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [mapLoaded, setMapLoaded] = useState(false);
     const [mapTimedOut, setMapTimedOut] = useState(false);
+    const [placesError, setPlacesError] = useState(null);
     const formOpen = form !== null;
 
     // #8: a map that never finishes loading gets an explanation, not a blank box.
@@ -232,6 +233,7 @@ const MapScreen = () => {
     };
 
     const handlePlaceSelect = (data, details) => {
+        setPlacesError(null);
         const place = placeFromDetails(data, details);
         if (!place) {
             showAlert(
@@ -422,15 +424,34 @@ const MapScreen = () => {
                 isNewPlacesAPI={true}
                 requestUrl={PLACES_NEW_REQUEST_URL}
                 fields={PLACE_DETAILS_FIELDS}
+                // Avoid consuming an AutocompletePlacesRequest quota unit for
+                // every keypress. The library already owns the session token;
+                // this only bounds the request rate and ignores short input.
+                debounce={350}
+                minLength={2}
                 onPress={(data, details = null) =>
                     handlePlaceSelect(data, details)
+                }
+                onFail={() =>
+                    setPlacesError(
+                        'Place search is temporarily unavailable (Google quota or network issue). Use the map or current location, then try again later.',
+                    )
+                }
+                onNotFound={() => setPlacesError('No matching places found.')}
+                listEmptyComponent={
+                    <Text style={[styles.hint, {color: palette.secondaryText}]}>
+                        {placesError || 'No matching places found.'}
+                    </Text>
                 }
                 query={{
                     key: placesApiKey(),
                     language: 'en',
                 }}
                 predefinedPlaces={[]}
-                textInputProps={isDark ? {placeholderTextColor: palette.placeholder} : {}}
+                textInputProps={{
+                    ...(isDark ? {placeholderTextColor: palette.placeholder} : {}),
+                    onChangeText: () => setPlacesError(null),
+                }}
                 keyboardShouldPersistTaps="handled"
                 styles={{
                     container: {flex: 0, marginBottom: 10},

@@ -304,7 +304,7 @@ object EmergencyCallAlert {
      * following the ringer mode and the user's channel settings, so nothing
      * of ours can keep sounding once the notification is gone.
      */
-    fun showSimCall(context: Context, kind: BreakthroughKind, count: Int): String {
+    fun showSimCall(context: Context, kind: BreakthroughKind, count: Int, contactName: String? = null): String {
         val ctx = context.applicationContext
         val outcome = outcomeFor(status(ctx, SIM))
         if (outcome == NOTIFICATIONS_OFF || outcome == CHANNEL_OFF) {
@@ -312,8 +312,9 @@ object EmergencyCallAlert {
             return outcome
         }
         return try {
-            val (title, text) = SimCallAlerts.text(kind, count, ended = false)
-            val n = simBuilder(ctx, title, text, PhoneApp.DIALER)
+            val (title, text) = SimCallAlerts.text(kind, count, ended = false, contactName)
+            val (publicTitle, publicText) = SimCallAlerts.text(kind, count, ended = false)
+            val n = simBuilder(ctx, title, text, PhoneApp.DIALER, publicTitle, publicText)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVibrate(VIBRATION)
@@ -339,17 +340,18 @@ object EmergencyCallAlert {
         runCatching { nm.cancel(SIM_TAG, SIM_NOTIFICATION_ID) }
         if (!notice) return
         runCatching {
-            val (title, text) = SimCallAlerts.text(record.kind, record.count, ended = true)
-            nm.notify(SIM_TAG, SIM_NOTIFICATION_ID, simBuilder(ctx, title, text, PhoneApp.CALL_LOG).setSilent(true).build())
+            val (title, text) = SimCallAlerts.text(record.kind, record.count, ended = true, record.contactName)
+            val (publicTitle, publicText) = SimCallAlerts.text(record.kind, record.count, ended = true)
+            nm.notify(SIM_TAG, SIM_NOTIFICATION_ID, simBuilder(ctx, title, text, PhoneApp.CALL_LOG, publicTitle, publicText).setSilent(true).build())
         }.onFailure { Log.w(TAG, "SIM call-ended notice failed: ${it.javaClass.simpleName}") }
     }
 
-    /** No name or number in either version (lock screen); tapping opens the Phone app. */
-    private fun simBuilder(ctx: Context, title: String, text: String, phoneTarget: String): NotificationCompat.Builder {
+    /** The public lock-screen version is always generic; tapping opens the Phone app. */
+    private fun simBuilder(ctx: Context, title: String, text: String, phoneTarget: String, publicTitle: String, publicText: String): NotificationCompat.Builder {
         val publicVersion = NotificationCompat.Builder(ctx, SIM.id)
             .setSmallIcon(R.drawable.ic_stat_silent_focus)
-            .setContentTitle(title)
-            .setContentText(text)
+            .setContentTitle(publicTitle)
+            .setContentText(publicText)
             .build()
         val open = runCatching {
             PendingIntent.getActivity(

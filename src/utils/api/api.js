@@ -11,6 +11,7 @@ import { apiStatusCode, commonConstant } from '../theme/constants';
 import { checkInternetConnection } from '../../function/commonFunctions';
 import { bearerFor, handleAuthRejected, isAuthFailure } from '../session';
 import { Constants, Emitter } from '../theme';
+import {scheduleQaResponse} from '../scheduleQaMock';
 
 const axiosInstance = Axios.create({
   baseURL: APIConfig.baseURL,
@@ -120,6 +121,10 @@ const APICall = async (
 ) => {
   if (keyboardOff) {
     Keyboard.dismiss();
+  }
+  const qaResponse = await scheduleQaResponse(method, body, url);
+  if (qaResponse) {
+    return qaResponse;
   }
   const internet = await checkInternetConnection();
   if (!internet) {
