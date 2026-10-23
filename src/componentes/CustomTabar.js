@@ -13,6 +13,7 @@ import HomeIcon from '../assets/svgs/HomeIcon';
 import MissedIcon from '../assets/svgs/ActivityIcon';
 import ControlIcon from '../assets/svgs/SettingIcon';
 import ProfileIcon from '../assets/svgs/ProfileIcon';
+import {BOTTOM_TAB_BAR_HEIGHT} from '../utils/bottomNavigationLayout';
 
 const icons = {
   Home: <HomeIcon />,
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 40,
     width: width - 30,
-    height: 75,
+    height: BOTTOM_TAB_BAR_HEIGHT,
     paddingHorizontal: 16,
     borderWidth: 1,
   },

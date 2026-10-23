@@ -32,7 +32,7 @@ import SafeAreaContainerView from '../componentes/SafeAreaContainerView/SafeArea
 // Misc Constants
 import {Colors, Constants, Images, Permissions} from '../utils/theme';
 import screens from '../utils/theme/screens';
-import {height, localize, width} from '../function/commonFunctions';
+import {localize, width} from '../function/commonFunctions';
 import EndPoints from '../utils/api/endpoints';
 import APICall from '../utils/api/api';
 import {showAlert, showApiErrorAlert} from '../function/Alert';
@@ -67,6 +67,7 @@ import {
 } from '../utils/engineStatus';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {linkColor} from '../utils/theme/controlColors';
+import {getFloatingActionBottomOffset} from '../utils/bottomNavigationLayout';
 
 
 export default function HomeScreen() {
@@ -963,6 +964,9 @@ export default function HomeScreen() {
                 <View style={styles.addNewScheduleView}>
                     <TouchableOpacity
                         onPress={onPressAddNewSchedule}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add schedule"
+                        testID="home-add-schedule"
                         style={styles.addNewScheduleTouchableOpacity}>
                         <Image
                             source={Images.iconPlus}
@@ -1122,10 +1126,15 @@ const styles = StyleSheet.create({
     },
     addNewScheduleView: {
         position: 'absolute',
-        bottom: 0,
+        // SafeAreaContainerView already places this screen above the system
+        // navigation inset. Offset from the *visible* tab bar, not a scaled
+        // screen height, so the entire 60dp action remains above it on both
+        // gesture and 3-button Android navigation.
+        bottom: getFloatingActionBottomOffset(),
         right: 0,
-        marginBottom: height(100),
         marginRight: width(10),
+        zIndex: 101,
+        elevation: 101,
     },
     addNewScheduleTouchableOpacity: {
         justifyContent: 'center',
