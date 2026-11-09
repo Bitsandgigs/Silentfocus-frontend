@@ -5,6 +5,7 @@ import {
     StyleSheet,
     TouchableOpacity,
     ScrollView,
+    Dimensions,
     useColorScheme,
     FlatList,
     Switch,
@@ -67,10 +68,19 @@ import {
 } from '../utils/engineStatus';
 import CustomLoader from '../componentes/CustomLoader/CustomLoader';
 import {linkColor} from '../utils/theme/controlColors';
-import {getFloatingActionBottomOffset} from '../utils/bottomNavigationLayout';
+import {
+    COMPACT_HEIGHT_DP,
+    FLOATING_ACTION_CLEARANCE,
+    getFloatingActionBottomOffset,
+} from '../utils/bottomNavigationLayout';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 
 export default function HomeScreen() {
+    const insets = useSafeAreaInsets();
+    // Short viewports (full display height, e.g. 720x1280 @ 280dpi = 731dp) put the schedule
+    // hint level with the floating +; only there keep the hint clear of it.
+    const compactHeight = Dimensions.get('screen').height < COMPACT_HEIGHT_DP;
     const navigation = useNavigation();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
@@ -863,6 +873,7 @@ export default function HomeScreen() {
                                 style={[
                                     styles.description,
                                     {color: isDark ? '#FAFAFA' : '#1C1C1C'},
+                                    compactHeight && styles.descriptionClearOfAction,
                                 ]}>
                                 Have the Silent Focus turn on automatically at a
                                 set time
@@ -961,7 +972,17 @@ export default function HomeScreen() {
                         )} */}
                     </ScrollView>
                 </View>
-                <View style={styles.addNewScheduleView}>
+                <View
+                    style={[
+                        styles.addNewScheduleView,
+                        {
+                            bottom: getFloatingActionBottomOffset(
+                                undefined,
+                                undefined,
+                                insets.bottom,
+                            ),
+                        },
+                    ]}>
                     <TouchableOpacity
                         onPress={onPressAddNewSchedule}
                         accessibilityRole="button"
@@ -1124,13 +1145,16 @@ const styles = StyleSheet.create({
         tintColor: '#ff9800',
         marginRight: 8,
     },
+    descriptionClearOfAction: {
+        paddingRight: FLOATING_ACTION_CLEARANCE,
+    },
     addNewScheduleView: {
         position: 'absolute',
         // SafeAreaContainerView already places this screen above the system
         // navigation inset. Offset from the *visible* tab bar, not a scaled
         // screen height, so the entire 60dp action remains above it on both
         // gesture and 3-button Android navigation.
-        bottom: getFloatingActionBottomOffset(),
+        bottom: getFloatingActionBottomOffset(),  // overridden with the live inset at render
         right: 0,
         marginRight: width(10),
         zIndex: 101,

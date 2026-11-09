@@ -81,3 +81,13 @@ export const calendarNote = calendar => {
     if (calendar?.visible === false) return 'Hidden in your calendar app';
     return null;
 };
+
+/**
+ * Opens whichever calendar app Android picks (a chooser if several). This is
+ * independent of the calendars chosen for Silent Focus. Resolves 'app' |
+ * 'chooser'; rejects (code ERR_NO_CALENDAR_APP) when no calendar app exists.
+ */
+export const openCalendarApp = () =>
+    Native?.openCalendarApp
+        ? Native.openCalendarApp()
+        : Promise.reject(new Error('Opening the calendar app is not available in this version'));

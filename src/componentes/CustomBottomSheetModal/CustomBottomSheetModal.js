@@ -69,7 +69,11 @@ export default function CustomBottomSheetModal(props) {
                 barStyle={isDark ? 'light-content' : 'dark-content'}
                 backgroundColor={Colors.darkBlackOpacity}
             />
-            <View style={styles.bottomSheetContainer}>
+            <View
+                style={[
+                    styles.bottomSheetContainer,
+                    isDark && styles.bottomSheetContainerDark,
+                ]}>
                 <View style={styles.modalHorizontalLine} />
                 {isBackdropPress && (
                     <View style={styles.headerView}>
@@ -90,7 +94,7 @@ export default function CustomBottomSheetModal(props) {
                         )}
                     </View>
                 )}
-                <View style={styles.lineView} />
+                <View style={[styles.lineView, isDark && styles.lineViewDark]} />
                 {children}
             </View>
         </Modal>

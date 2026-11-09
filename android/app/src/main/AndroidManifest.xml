@@ -39,6 +39,11 @@
         <!-- #9/#11: Activity call rows open WhatsApp when its notification is gone. -->
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <!-- "Open calendar app": resolve whichever app handles calendar VIEW. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:host="com.android.calendar" />
+        </intent>
     </queries>
 
 

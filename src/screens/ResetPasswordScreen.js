@@ -6,6 +6,7 @@ import {
     StyleSheet,
     ScrollView,
     SafeAreaView,
+    useColorScheme,
 } from 'react-native';
 
 // Lib
@@ -25,6 +26,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
 import {height, localize} from '../function/commonFunctions';
+import {authPalette} from '../utils/theme/authPalette';
 import {Colors, Constants, Images} from '../utils/theme';
 import {validatePassword} from '../function/validation';
 
@@ -39,6 +41,8 @@ import screens from '../utils/theme/screens';
 export default function ResetPasswordScreen() {
     // navigation
     const navigation = useNavigation();
+    const isDark = useColorScheme() === 'dark';
+    const ap = authPalette(isDark);
     const route = useRoute();
     // resetToken: from POST reset-password (VerifyOtpScreen). Required by
     // create-new-password; one-time use, expires after ~10 minutes.
@@ -160,12 +164,12 @@ export default function ResetPasswordScreen() {
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
                     style={styles.backButton}>
-                    <BackIcon width={26} height={26} color={Colors.black} />
+                    <BackIcon width={26} height={26} color={ap.text} />
                 </TouchableOpacity>
                 <View style={{flex: 1}}>
                     <View style={styles.headerWrapper}>
-                        <Text style={styles.heading}>{localize('SF23')}</Text>
-                        <Text style={styles.subheading}>
+                        <Text style={[styles.heading, {color: ap.text}]}>{localize('SF23')}</Text>
+                        <Text style={[styles.subheading, {color: ap.text}]}>
                             {localize('SF24')}
                         </Text>
                     </View>

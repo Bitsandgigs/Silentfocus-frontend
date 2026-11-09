@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+import {useColorScheme} from 'react-native';
 import DatePicker from 'react-native-date-picker';
 // Lib
 import moment from 'moment';
@@ -24,6 +25,7 @@ export default function CustomDateTimePicker(props) {
         title,
         isShowCloseButton = false,
     } = props;
+    const isDark = useColorScheme() === 'dark';
     const [selectedDate, setSelectedDate] = useState(moment().toDate());
     const [isShowModal, setIsShowModal] = useState(false);
 
@@ -32,7 +34,6 @@ export default function CustomDateTimePicker(props) {
     }, [isModalVisible]);
 
     useEffect(() => {
-        console.log('date=========', date);
         setSelectedDate(date);
     }, [date]);
 
@@ -61,12 +62,12 @@ export default function CustomDateTimePicker(props) {
                     mode={modePicker}
                     onDateChange={onChangeDate}
                     androidVariant={'iosClone'}
-                    textColor={Colors.black}
+                    textColor={isDark ? '#FFFFFF' : Colors.black}
                     minimumDate={minDate}
                     maximumDate={maxDate}
                     is24hourSource={'device'}
                     locale={'en-US'}
-                    theme={'light'}
+                    theme={isDark ? 'dark' : 'light'}
                 />
                 <CustomButton title={confirmButtonText} onPress={onPressDone} />
             </>

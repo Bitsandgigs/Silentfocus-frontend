@@ -132,8 +132,8 @@ describe('3. orange link text', () => {
         expect(read('src/screens/SettingScreen.js').match(/styles\.manageZonesLink, \{color: link\}/g)).toHaveLength(3);
     });
 
-    test('"Modify Filters" is the link-coloured value', () => {
-        expect(read('src/screens/ProfileScreen.js')).toMatch(/value="Modify Filters"\s*color=\{link\}/);
+    test('"Open" (calendar app) is the link-coloured value', () => {
+        expect(read('src/screens/ProfileScreen.js')).toMatch(/value="Open"\s*color=\{link\}/);
     });
 });
 

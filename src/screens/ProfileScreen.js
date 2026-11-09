@@ -9,8 +9,6 @@ import {
     Modal,
     Pressable,
     useColorScheme,
-    Platform,
-    Linking,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import LogoutIcon from '../assets/svgs/Logout';
@@ -44,7 +42,7 @@ import {getLearningState} from '../utils/learning';
 import {useIsFocused} from '@react-navigation/native';
 import {LIGHT_CONTROLS, linkColor} from '../utils/theme/controlColors';
 import CalendarPickerModal from '../componentes/CalendarPickerModal';
-import {describeSelection, getDeviceCalendars, saveCalendarSelection} from '../utils/deviceCalendars';
+import {describeSelection, getDeviceCalendars, openCalendarApp, saveCalendarSelection} from '../utils/deviceCalendars';
 
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
@@ -205,16 +203,18 @@ const ProfileScreen = () => {
         LogOutApiCall({device_id: deviceId});
     };
 
-    const onPressModifyFilters = timestamp => {
-        const date = new Date(timestamp).getTime(); // Current time in ms
-
-        if (Platform.OS === 'ios') {
-            // iOS calendar requires seconds
-            const seconds = Math.floor(date / 1000);
-            Linking.openURL(`calshow:${seconds}`);
-        } else {
-            // Android calendar uses milliseconds
-            Linking.openURL(`content://com.android.calendar/time/${date}`);
+    // "Open calendar app": Android decides which app handles calendar VIEW
+    // (e.g. Samsung Calendar even for Google accounts); a chooser appears when
+    // several exist. Which calendars silence the phone is chosen separately
+    // under "Change calendars".
+    const onPressOpenCalendarApp = async () => {
+        try {
+            await openCalendarApp();
+        } catch (e) {
+            showAlert(
+                Constants.commonConstant.appName,
+                'No calendar app could be opened on this phone. Your selected calendars still work.',
+            );
         }
     };
 
@@ -485,12 +485,12 @@ const ProfileScreen = () => {
                     <Separator divider={divider} />
                     <View style={styles.fieldRow}>
                         <TouchableOpacity
-                            onPress={() =>
-                                onPressModifyFilters(new Date().getTime())
-                            }>
+                            onPress={onPressOpenCalendarApp}
+                            accessibilityRole="button"
+                            accessibilityHint="Opens your phone's calendar app. Calendars used by Silent Focus are chosen under Change calendars.">
                             <Field
-                                label="Event Filters"
-                                value="Modify Filters"
+                                label="Calendar App"
+                                value="Open"
                                 color={link}
                             />
                         </TouchableOpacity>
@@ -506,6 +506,12 @@ const ProfileScreen = () => {
                                 ]}
                                 testID="calendar-summary">
                                 {calendarSummary || 'Calendars on this phone'}
+                            </Text>
+                            <Text
+                                style={[styles.providerText, {color: mutedText, marginTop: hp('0.6%')}]}
+                                testID="calendar-app-note">
+                                Open opens your phone's default calendar app, which may differ from the calendars
+                                chosen here.
                             </Text>
                             <TouchableOpacity
                                 onPress={openCalendarPicker}

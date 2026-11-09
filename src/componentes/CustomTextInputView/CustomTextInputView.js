@@ -6,9 +6,11 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    useColorScheme,
 } from 'react-native';
 import {styles} from './CustomTextInputViewStyle';
 import {Colors} from '../../utils/theme';
+import {authPalette} from '../../utils/theme/authPalette';
 import KeyboardManager from 'react-native-keyboard-manager';
 
 export default function CustomTextInputView(props) {
@@ -42,6 +44,7 @@ export default function CustomTextInputView(props) {
     } = props;
 
     // Variables
+    const palette = authPalette(useColorScheme() === 'dark');
     const inputValidContainerStyle = StyleSheet.flatten([
         styles.validInputContainerStyle,
     ]);
@@ -69,6 +72,7 @@ export default function CustomTextInputView(props) {
                 }}
                 style={[
                     inputValidContainerStyle,
+                    {backgroundColor: palette.inputBg},
                     !isValid && inputInvalidContainerStyle,
                     textInputStyle,
                 ]}>
@@ -89,11 +93,12 @@ export default function CustomTextInputView(props) {
                     <TextInput
                         style={[
                             styles.textInputView,
+                            {color: palette.inputText},
                             textColor !== null && {color: textColor},
                         ]}
                         placeholder={placeholder}
                         textContentType={'oneTimeCode'}
-                        placeholderTextColor={Colors.placeHolder}
+                        placeholderTextColor={palette.placeholder}
                         value={value}
                         onChangeText={onChangeText}
                         ref={innerRef}

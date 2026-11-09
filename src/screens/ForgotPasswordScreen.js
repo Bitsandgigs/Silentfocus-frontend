@@ -7,6 +7,7 @@ import {
     ScrollView,
     SafeAreaView,
     Platform,
+    useColorScheme,
 } from 'react-native';
 
 // Lib
@@ -27,6 +28,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
 import {height, localize, setAsyncData} from '../function/commonFunctions';
+import {authPalette} from '../utils/theme/authPalette';
 import {Colors, Constants, Images} from '../utils/theme';
 import {
     validateEmail,
@@ -51,6 +53,8 @@ import screens from '../utils/theme/screens';
 export default function ForgotPasswordScreen() {
     // navigation
     const navigation = useNavigation();
+    const isDark = useColorScheme() === 'dark';
+    const ap = authPalette(isDark);
 
     // useState
     const [isLoginData, setIsLoginData] = useState(true);
@@ -175,12 +179,12 @@ export default function ForgotPasswordScreen() {
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
                     style={styles.backButton}>
-                    <BackIcon width={26} height={26} color={Colors.black} />
+                    <BackIcon width={26} height={26} color={ap.text} />
                 </TouchableOpacity>
                 <View style={{flex: 1}}>
                     <View style={styles.headerWrapper}>
-                        <Text style={styles.heading}>{localize('SF17')}</Text>
-                        <Text style={styles.subheading}>
+                        <Text style={[styles.heading, {color: ap.text}]}>{localize('SF17')}</Text>
+                        <Text style={[styles.subheading, {color: ap.text}]}>
                             {localize('SF18')}
                         </Text>
                     </View>

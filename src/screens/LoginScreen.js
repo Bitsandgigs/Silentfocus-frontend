@@ -12,6 +12,7 @@ import {
     SafeAreaView,
     Platform,
     Alert,
+    useColorScheme,
 } from 'react-native';
 
 // Lib
@@ -37,6 +38,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
 import {height, localize} from '../function/commonFunctions';
+import {authPalette} from '../utils/theme/authPalette';
 import {Colors, Constants, Images} from '../utils/theme';
 import {
     validateEmail,
@@ -73,6 +75,8 @@ import {
 export default function LoginScreen() {
     // navigation
     const navigation = useNavigation();
+    const isDark = useColorScheme() === 'dark';
+    const ap = authPalette(isDark);
 
     // useContext
     const {setIsLogin, updateConstantValue} = useContext(AppContext);
@@ -561,27 +565,34 @@ export default function LoginScreen() {
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
                     style={styles.backButton}>
-                    <BackIcon width={26} height={26} color={Colors.black} />
+                    <BackIcon width={26} height={26} color={ap.text} />
                 </TouchableOpacity>
                 <View style={{flex: 1}}>
                     <View style={styles.headerWrapper}>
-                        <Text style={styles.heading}>
+                        <Text style={[styles.heading, {color: ap.text}]}>
                             Go ahead and setup your account
                         </Text>
-                        <Text style={styles.subheading}>
+                        <Text style={[styles.subheading, {color: ap.text}]}>
                             Sign up and enjoy the unique experience of Silent
                             Focus
                         </Text>
                     </View>
 
                     <View style={styles.outerCard}>
-                        <View style={styles.cardWrapper}>
+                        <View
+                            style={[
+                                styles.cardWrapper,
+                                {
+                                    backgroundColor: ap.card,
+                                    borderColor: ap.cardBorder,
+                                },
+                            ]}>
                             <View>
-                                <View style={styles.tabRow}>
+                                <View style={[styles.tabRow, {backgroundColor: ap.tabRow}]}>
                                     <TouchableOpacity
                                         style={[
                                             styles.tabButton,
-                                            isLoginData && styles.tabActive,
+                                            isLoginData && [styles.tabActive, {backgroundColor: ap.tabActive}],
                                         ]}
                                         onPress={() => {
                                             values.name = '';
@@ -592,6 +603,7 @@ export default function LoginScreen() {
                                         <Text
                                             style={[
                                                 styles.tabText,
+                                                {color: ap.tabText},
                                                 isLoginData &&
                                                     styles.tabTextActive,
                                             ]}>
@@ -601,7 +613,7 @@ export default function LoginScreen() {
                                     <TouchableOpacity
                                         style={[
                                             styles.tabButton,
-                                            !isLoginData && styles.tabActive,
+                                            !isLoginData && [styles.tabActive, {backgroundColor: ap.tabActive}],
                                         ]}
                                         onPress={() => {
                                             values.name = '';
@@ -612,6 +624,7 @@ export default function LoginScreen() {
                                         <Text
                                             style={[
                                                 styles.tabText,
+                                                {color: ap.tabText},
                                                 !isLoginData &&
                                                     styles.tabTextActive,
                                             ]}>
@@ -755,12 +768,12 @@ export default function LoginScreen() {
                                             onValueChange={setRememberMe}
                                             thumbColor="#fff"
                                             trackColor={{
-                                                false: '#ccc',
+                                                false: ap.switchOff,
                                                 true: 'rgba(240, 138, 44, 0.35)',
                                             }}
                                             style={{transform: [{scale: 0.8}]}}
                                         />
-                                        <Text style={styles.rememberText}>
+                                        <Text style={[styles.rememberText, {color: ap.text}]}>
                                             Remember me
                                         </Text>
                                     </View>
@@ -798,34 +811,40 @@ export default function LoginScreen() {
                                 )}
 
                                 <View style={styles.dividerRow}>
-                                    <View style={styles.line} />
+                                    <View style={[styles.line, {backgroundColor: ap.line}]} />
                                     <Text style={styles.orText}>
                                         or login with
                                     </Text>
-                                    <View style={styles.line} />
+                                    <View style={[styles.line, {backgroundColor: ap.line}]} />
                                 </View>
 
                                 <View style={styles.socialRow}>
                                     <TouchableOpacity
-                                        style={styles.socialButtonModern}
+                                        style={[
+                                            styles.socialButtonModern,
+                                            {backgroundColor: ap.socialBg},
+                                        ]}
                                         onPress={onPressGoogleLogin}>
                                         <Image
                                             source={require('../assets/images/Goggle.png')}
                                             style={styles.socialIconModern}
                                         />
-                                        <Text style={styles.socialText}>
+                                        <Text style={[styles.socialText, {color: ap.socialText}]}>
                                             Google
                                         </Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
-                                        style={styles.socialButtonModern}
+                                        style={[
+                                            styles.socialButtonModern,
+                                            {backgroundColor: ap.socialBg},
+                                        ]}
                                         onPress={onPressFaceBookLogin}>
                                         <Image
                                             source={require('../assets/images/facebook.png')}
                                             style={styles.socialIconModern}
                                         />
-                                        <Text style={styles.socialText}>
+                                        <Text style={[styles.socialText, {color: ap.socialText}]}>
                                             Facebook
                                         </Text>
                                     </TouchableOpacity>
@@ -848,7 +867,7 @@ export default function LoginScreen() {
                         reducedTransparencyFallbackColor="rgba(0,0,0,0.5)"
                     />
 
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, {backgroundColor: ap.card}]}>
                         <Image
                             source={require('../assets/images/tts.png')}
                             style={{width: 64, height: 64, marginBottom: 16}}
@@ -858,19 +877,20 @@ export default function LoginScreen() {
                                 fontSize: 20,
                                 fontWeight: '600',
                                 marginBottom: 6,
+                                color: ap.text,
                             }}>
                             Verify your account
                         </Text>
                         <Text
                             style={{
                                 fontSize: 14,
-                                color: '#555',
+                                color: ap.muted,
                                 textAlign: 'center',
                                 marginBottom: 4,
                             }}>
                             Enter 4 digits verification code we have sent to
                         </Text>
-                        <Text style={{fontWeight: 'bold', marginBottom: 16}}>
+                        <Text style={{fontWeight: 'bold', marginBottom: 16, color: ap.text}}>
                             {!isLoginData && values.email ? values.email : ''}
                         </Text>
 
@@ -904,6 +924,7 @@ export default function LoginScreen() {
                                         <Text
                                             style={[
                                                 CommonStyle.cellText,
+                                                {color: ap.text},
                                                 isError &&
                                                     CommonStyle.errorText,
                                             ]}>

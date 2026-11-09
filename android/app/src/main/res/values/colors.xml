@@ -1,0 +1,7 @@
+<resources>
+    <!-- Launch surface: matches the in-app background (ThemeContext: #000 dark / #fff light). -->
+    <color name="sf_launch_background">#FFFFFF</color>
+    <color name="sf_launch_bar">#FFFFFF</color>
+    <color name="sf_default_text">#666666</color>
+    <bool name="sf_light_bars">true</bool>
+</resources>

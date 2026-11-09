@@ -7,6 +7,7 @@ import {
     ScrollView,
     SafeAreaView,
     Platform,
+    useColorScheme,
 } from 'react-native';
 
 // Lib
@@ -25,6 +26,7 @@ import CustomButton from '../componentes/CustomButton/CustomButton';
 import BackIcon from '../assets/svgs/Back';
 import responsive from '../styles/responsive';
 import {height, localize} from '../function/commonFunctions';
+import {authPalette} from '../utils/theme/authPalette';
 import {Colors, Constants} from '../utils/theme';
 
 // API
@@ -45,6 +47,8 @@ import {getAppConfig} from '../utils/appConfig';
 export default function VerifyOtpScreen() {
     // navigation
     const navigation = useNavigation();
+    const isDark = useColorScheme() === 'dark';
+    const ap = authPalette(isDark);
     const route = useRoute();
     const {email} = route.params;
 
@@ -187,12 +191,12 @@ export default function VerifyOtpScreen() {
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
                     style={styles.backButton}>
-                    <BackIcon width={26} height={26} color={Colors.black} />
+                    <BackIcon width={26} height={26} color={ap.text} />
                 </TouchableOpacity>
                 <View style={{flex: 1}}>
                     <View style={styles.headerWrapper}>
-                        <Text style={styles.heading}>{localize('SF20')}</Text>
-                        <Text style={styles.subheading}>
+                        <Text style={[styles.heading, {color: ap.text}]}>{localize('SF20')}</Text>
+                        <Text style={[styles.subheading, {color: ap.text}]}>
                             {localize('SF21')}
                         </Text>
                     </View>
@@ -236,6 +240,7 @@ export default function VerifyOtpScreen() {
                                                 <Text
                                                     style={[
                                                         CommonStyle.cellText,
+                                                        {color: ap.text},
                                                         isError &&
                                                             CommonStyle.errorText,
                                                     ]}>

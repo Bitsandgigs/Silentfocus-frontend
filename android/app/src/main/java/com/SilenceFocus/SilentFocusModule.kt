@@ -265,6 +265,25 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Opens a calendar app (system choice; chooser when several exist). It does
+     * not depend on, or change, which calendars Silent Focus uses. Resolves
+     * "app" | "chooser"; rejects ERR_NO_CALENDAR_APP when none can handle it.
+     */
+    @ReactMethod
+    fun openCalendarApp(promise: Promise) {
+        try {
+            val (mode, _) = com.SilenceFocus.automation.CalendarLauncher.launch(reactContext, System.currentTimeMillis())
+            if (mode == com.SilenceFocus.automation.CalendarLauncher.RESULT_NONE) {
+                promise.reject("ERR_NO_CALENDAR_APP", "No calendar app is installed")
+            } else {
+                promise.resolve(mode)
+            }
+        } catch (e: Exception) {
+            promise.reject("ERR_OPEN_CALENDAR", e.javaClass.simpleName)
+        }
+    }
+
+    /**
      * One fresh fused-location fix for "Use my current location". Resolves
      * {latitude, longitude, accuracy, time}; rejects with ERR_LOCATION_PERMISSION
      * / ERR_LOCATION_UNAVAILABLE. Coordinates are returned, never logged.

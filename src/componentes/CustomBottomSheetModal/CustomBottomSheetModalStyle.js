@@ -23,6 +23,14 @@ export const styles = StyleSheet.create({
         paddingBottom: hasNotch() ? height(25) : height(20),
         paddingTop: height(4),
     },
+    // Dark mode: same surface as the app's cards instead of a white sheet.
+    bottomSheetContainerDark: {
+        backgroundColor: '#1C1C1C',
+    },
+    lineViewDark: {
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
     modalHorizontalLine: {
         alignSelf: 'center',
         marginBottom: height(15),
