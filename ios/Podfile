@@ -63,5 +63,27 @@ target 'Silence_Focus' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Xcode 26/27 refuses pods whose deployment target is below 15.0.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |bc|
+        current = bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_s
+        if current.empty? || Gem::Version.new(current) < Gem::Version.new('15.1')
+          bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        end
+      end
+    end
+
+    # fmt 11 (React Native 0.79) fails to compile with the Xcode 26/27 clang because of
+    # consteval; disable it in fmt's own header until React Native ships a newer fmt.
+    fmt_base = File.join(installer.sandbox.root.to_s, 'fmt/include/fmt/base.h')
+    if File.exist?(fmt_base)
+      src = File.read(fmt_base)
+      patched = src.sub('#if !defined(__cpp_lib_is_constant_evaluated)', '#if 1  // patched by Podfile: disable consteval (Xcode 26/27)')
+      if patched != src
+        File.chmod(0644, fmt_base) # CocoaPods leaves pod sources read-only
+        File.write(fmt_base, patched)
+      end
+    end
   end
 end

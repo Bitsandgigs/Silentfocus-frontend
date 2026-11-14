@@ -236,6 +236,17 @@ describe('SubscriptionScreen', () => {
         expect(byId(tree, 'plan-pro-cta').props.disabled).toBe(true);
     });
 
+    test('a server without the subscription API (404) says so instead of a generic error', async () => {
+        api.getSubscriptionPlans.mockResolvedValue({statusCode: 404, data: {message: 'Not Found'}});
+        api.getSubscription.mockResolvedValue({statusCode: 404, data: {message: 'Not Found'}});
+        api.getSubscriptionPayments.mockResolvedValue({statusCode: 404});
+        let tree;
+        await act(async () => { tree = renderer.create(<SubscriptionScreen />); });
+        await flush();
+        trees.push(tree);
+        expect(texts(tree)).toContain('Subscriptions are not available on this server yet.');
+    });
+
     test('load failure offers a retry instead of inventing a plan', async () => {
         api.getSubscriptionPlans.mockResolvedValue({statusCode: 0, isNetworkError: true});
         api.getSubscription.mockResolvedValue({statusCode: 0, isNetworkError: true});

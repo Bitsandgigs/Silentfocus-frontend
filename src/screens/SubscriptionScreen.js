@@ -69,6 +69,7 @@ export default function SubscriptionScreen() {
     const [busy, setBusy] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [unavailable, setUnavailable] = useState(false); // server has no subscription API yet
     const mounted = useRef(true);
 
     useEffect(() => {
@@ -87,6 +88,7 @@ export default function SubscriptionScreen() {
         ]);
         if (!mounted.current) return;
         if (ok(planRes)) setPlans(planRes.data.result);
+        setUnavailable(planRes?.statusCode === 404);
         setLoadFailed(!ok(planRes) || !sub);
         setLoading(false);
         const pay = await getSubscriptionPayments();
@@ -356,7 +358,9 @@ export default function SubscriptionScreen() {
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                     {loadFailed && !snap ? (
                         <View style={styles.center}>
-                            <Text style={[styles.small, {color: c.text, textAlign: 'center'}]}>Your subscription could not be loaded.</Text>
+                            <Text style={[styles.small, {color: c.text, textAlign: 'center'}]}>
+                                {unavailable ? 'Subscriptions are not available on this server yet.' : 'Your subscription could not be loaded.'}
+                            </Text>
                             <TouchableOpacity onPress={loadAll} accessibilityRole="button" style={[styles.secondaryBtn, {marginTop: 12}]}>
                                 <Text style={[styles.secondaryText, {color: c.text}]}>Try again</Text>
                             </TouchableOpacity>
