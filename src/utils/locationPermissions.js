@@ -15,6 +15,8 @@ import {
 } from 'react-native-permissions';
 
 const A = PERMISSIONS.ANDROID;
+const I = PERMISSIONS.IOS;
+const isIos = () => Platform.OS === 'ios';
 
 // Pure: raw react-native-permissions results -> what automation can do.
 export const summarizeLocation = ({fine, coarse, background}) => {
@@ -43,6 +45,14 @@ export const summarizeLocation = ({fine, coarse, background}) => {
 };
 
 export const getLocationPermissionState = async () => {
+    if (isIos()) {
+        // iOS: "While Using" + "Always" (Always can only be asked after While Using).
+        const [whenInUse, always] = await Promise.all([
+            check(I.LOCATION_WHEN_IN_USE),
+            check(I.LOCATION_ALWAYS),
+        ]);
+        return summarizeLocation({fine: whenInUse, coarse: undefined, background: always});
+    }
     if (Platform.OS !== 'android') {
         return summarizeLocation({});
     }
@@ -85,7 +95,7 @@ export const requestForegroundLocation = async () => {
         );
         return state;
     }
-    await request(A.ACCESS_FINE_LOCATION);
+    await request(isIos() ? I.LOCATION_WHEN_IN_USE : A.ACCESS_FINE_LOCATION);
     state = await getLocationPermissionState();
     if (state.foreground === 'approximate') {
         Alert.alert(
@@ -107,18 +117,28 @@ export const requestBackgroundLocation = async () => {
     }
     const agreed = await confirm(
         'Allow location all the time?',
-        `${BACKGROUND_DISCLOSURE}\n\nOn the next screen choose "Allow all the time".`,
+        isIos()
+            ? `${BACKGROUND_DISCLOSURE}\n\nWhen asked, choose "Change to Always Allow".`
+            : `${BACKGROUND_DISCLOSURE}\n\nOn the next screen choose "Allow all the time".`,
         'Continue',
     );
     if (!agreed) {
         return state;
     }
-    if (state.background === 'blocked') {
+    // iOS reports "Always" as blocked while only "While Using" is granted, but the
+    // system still offers the one-time "Change to Always Allow" upgrade: ask first and
+    // only send the user to Settings if it is still not granted afterwards.
+    if (state.background === 'blocked' && !isIos()) {
         openSettings().catch(() => {});
         return state;
     }
-    await request(A.ACCESS_BACKGROUND_LOCATION);
+    await request(isIos() ? I.LOCATION_ALWAYS : A.ACCESS_BACKGROUND_LOCATION);
     state = await getLocationPermissionState();
+    if (isIos() && state.background !== 'granted') {
+        offerSettings(
+            'To silence your phone at your Silent Zones when the app is closed, set Location to "Always" for Silent Focus in Settings.',
+        );
+    }
     return state;
 };
 
@@ -132,10 +152,10 @@ export const ensureLocationAutomationPermissions = async () => {
 };
 
 export const getCalendarPermission = async () => {
-    if (Platform.OS !== 'android') {
+    if (Platform.OS !== 'android' && !isIos()) {
         return 'denied';
     }
-    const result = await check(A.READ_CALENDAR);
+    const result = await check(isIos() ? I.CALENDARS : A.READ_CALENDAR);
     return result === RESULTS.GRANTED
         ? 'granted'
         : result === RESULTS.BLOCKED
@@ -154,6 +174,6 @@ export const requestCalendarPermission = async () => {
         );
         return current;
     }
-    await request(A.READ_CALENDAR);
+    await request(isIos() ? I.CALENDARS : A.READ_CALENDAR);
     return getCalendarPermission();
 };
