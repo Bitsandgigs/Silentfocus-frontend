@@ -87,6 +87,21 @@ const EndPoints = {
     deleteAutoResponseTemplate: 'auto-response-templates/{template_id}',
     setDefaultAutoResponseTemplate: 'auto-response-templates/{template_id}/default',
 
+    // Subscriptions (Pro / Premium). The backend is the only source of truth;
+    // Stripe secrets never reach the app - checkout runs in the browser.
+    subscriptionPlans: 'subscription/plans',
+    subscription: 'subscription',
+    subscriptionUsage: 'subscription/usage',
+    subscriptionCheck: 'subscription/check/{feature}',
+    subscriptionPayments: 'subscription/payments',
+    subscriptionCheckout: 'subscription/checkout',
+    subscriptionUpgrade: 'subscription/upgrade',
+    subscriptionCancel: 'subscription/cancel',
+    subscriptionResume: 'subscription/resume',
+    subscriptionSync: 'subscription/sync',
+    subscriptionPortal: 'subscription/portal',
+    setCalendarSelection: 'calendar/selection',
+
     // Calendar (backend-connected calendar, distinct from device-native calendar sync)
     getCalendarStatus: 'calendar/status',
     connectCalendar: 'calendar/connect',

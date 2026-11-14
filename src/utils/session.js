@@ -215,6 +215,12 @@ export const clearSession = async ({mode = 'logout'} = {}) => {
     Constants.commonConstant.appUser = defaultUser;
     Constants.commonConstant.appToken = '';
     try {
+        // Lazy require: subscription -> api -> session would be a cycle.
+        require('./subscription').clearSubscriptionState();
+    } catch (e) {
+        // best effort
+    }
+    try {
         // Forget this user's schedules/manual override and restore the
         // phone if Silent Focus had silenced it.
         if (mode === 'deleted') {

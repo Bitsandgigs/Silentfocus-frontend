@@ -22,6 +22,7 @@ export default {
     AutoReplyScreen: 'AutoReplyScreen',
     SessionHistoryScreen: 'SessionHistoryScreen',
     LegalScreen: 'LegalScreen',
+    SubscriptionScreen: 'SubscriptionScreen',
 
     // Profile Flow
     ProfileScreen: 'ProfileScreen',

@@ -98,3 +98,17 @@ export const offlineSync = payload => APICall('post', payload, EndPoints.offline
 // Location Master
 export const getCountries = (params = {}) => APICall('get', params, EndPoints.getCountries);
 export const getStates = (countryId, params = {}) => APICall('get', { country_id: countryId, ...params }, EndPoints.getStates);
+
+// Subscriptions (Pro / Premium) - everything is decided by the backend.
+const JSON_HEADERS = {'Content-Type': 'application/json', Accept: 'application/json'};
+export const getSubscriptionPlans = () => APICall('get', null, EndPoints.subscriptionPlans);
+export const getSubscription = () => APICall('get', null, EndPoints.subscription);
+export const getSubscriptionPayments = () => APICall('get', null, EndPoints.subscriptionPayments);
+export const createSubscriptionCheckout = (plan, interval) => APICall('post', {plan, interval}, EndPoints.subscriptionCheckout, JSON_HEADERS);
+export const upgradeSubscription = (plan, interval) => APICall('post', {plan, interval}, EndPoints.subscriptionUpgrade, JSON_HEADERS);
+export const cancelSubscription = () => APICall('post', {}, EndPoints.subscriptionCancel, JSON_HEADERS);
+export const resumeSubscription = () => APICall('post', {}, EndPoints.subscriptionResume, JSON_HEADERS);
+export const openBillingPortal = () => APICall('post', {}, EndPoints.subscriptionPortal, JSON_HEADERS);
+// Only an id is sent; the server asks Stripe what actually happened.
+export const syncSubscription = sessionId => APICall('post', sessionId ? {session_id: sessionId} : {}, EndPoints.subscriptionSync, JSON_HEADERS);
+export const setCalendarSelectionOnServer = ids => APICall('post', {calendar_ids: ids.map(String)}, EndPoints.setCalendarSelection, JSON_HEADERS);

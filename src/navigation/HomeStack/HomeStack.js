@@ -18,6 +18,7 @@ import EmergencyContactsScreen from '../../screens/EmergencyContactsScreen';
 import AutoReplyScreen from '../../screens/AutoReplyScreen';
 import SessionHistoryScreen from '../../screens/SessionHistoryScreen';
 import LegalScreen from '../../screens/LegalScreen';
+import SubscriptionScreen from '../../screens/SubscriptionScreen';
 
 export default function HomeStack() {
     // Navigation
@@ -64,6 +65,11 @@ export default function HomeStack() {
             <HomeStackNavigator.Screen
                 name={screens.LegalScreen}
                 component={LegalScreen}
+                options={{headerShown: false}}
+            />
+            <HomeStackNavigator.Screen
+                name={screens.SubscriptionScreen}
+                component={SubscriptionScreen}
                 options={{headerShown: false}}
             />
         </HomeStackNavigator.Navigator>

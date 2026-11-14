@@ -42,6 +42,9 @@ import {getLearningState} from '../utils/learning';
 import {useIsFocused} from '@react-navigation/native';
 import {LIGHT_CONTROLS, linkColor} from '../utils/theme/controlColors';
 import CalendarPickerModal from '../componentes/CalendarPickerModal';
+import {setCalendarSelectionOnServer} from '../utils/api/apiServices';
+import {refreshSubscription, subscribeToSubscription, STATUS_TEXT} from '../utils/subscription';
+import screens from '../utils/theme/screens';
 import {describeSelection, getDeviceCalendars, openCalendarApp, saveCalendarSelection} from '../utils/deviceCalendars';
 
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
@@ -138,6 +141,16 @@ const ProfileScreen = () => {
     };
 
     const handleSaveCalendars = async ids => {
+        // The backend enforces the plan's calendar limit: register the choice first.
+        const registered = await setCalendarSelectionOnServer(ids);
+        if (
+            !registered?.isNetworkError &&
+            !(registered?.statusCode === 200 && registered?.data?.status === '1')
+        ) {
+            showApiErrorAlert(Constants.commonConstant.appName, registered, 'Your calendar choice could not be saved. Please try again.');
+            return;
+        }
+        refreshSubscription();
         try {
             await saveCalendarSelection(ids);
         } catch (e) {
@@ -152,10 +165,18 @@ const ProfileScreen = () => {
         refreshCalendarSummary();
     };
 
+    const [subscription, setSubscription] = useState(null);
+    useEffect(() => {
+        const off = subscribeToSubscription(({snapshot}) => setSubscription(snapshot));
+        refreshSubscription();
+        return off;
+    }, []);
+
     const handleDisconnectCalendar = async () => {
         setIsCalendarSynced(false);
         setCalendarSummary(null);
         await saveCalendarSyncStatus(false);
+        setCalendarSelectionOnServer([]).then(refreshSubscription).catch(() => {});
         // Turns calendar automation off natively and clears its cache.
         syncAutomationSettings().catch(() => {});
     };
@@ -467,6 +488,23 @@ const ProfileScreen = () => {
                             )}
                         </View>
                         {/* </View> */}
+                    </View>
+                </Section>
+
+                {/* Subscription (plan, status and limits come from the backend) */}
+                <Section title="Subscription" cardColor={card}>
+                    <View style={styles.fieldRow}>
+                        <TouchableOpacity
+                            testID="open-subscription"
+                            onPress={() => navigation.navigate(screens.SubscriptionScreen)}
+                            accessibilityRole="button"
+                            accessibilityHint="Shows your plan, usage and available upgrades.">
+                            <Field
+                                label={subscription ? `${subscription.plan.name} plan` : 'Plans'}
+                                value={subscription ? (STATUS_TEXT[subscription.status] || '') + '  ›' : 'View  ›'}
+                                color={link}
+                            />
+                        </TouchableOpacity>
                     </View>
                 </Section>
 

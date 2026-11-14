@@ -3,6 +3,7 @@ import {Platform, StatusBar, useColorScheme} from 'react-native';
 import {Colors} from './src/utils/theme';
 // Context Provider
 import ContextProvider from './src/utils/context/contextProvider';
+import {navigationRef} from './src/utils/navigationRef';
 import {DarkTheme, DefaultTheme, NavigationContainer} from '@react-navigation/native';
 import {navigationTheme} from './src/utils/theme/launchTheme';
 // Stack
@@ -53,7 +54,7 @@ export default function App() {
                 />
                 <ContextProvider>
                     <ErrorBoundary>
-                        <NavigationContainer theme={navigationTheme(isDark, DarkTheme, DefaultTheme)}>
+                        <NavigationContainer ref={navigationRef} theme={navigationTheme(isDark, DarkTheme, DefaultTheme)}>
                             <RootStack />
                         </NavigationContainer>
                     </ErrorBoundary>

@@ -1,5 +1,7 @@
 import { Alert } from 'react-native';
 import { Constants } from '../utils/theme';
+import { navigateTo } from '../utils/navigationRef';
+import { planLimitFrom } from '../utils/subscription';
 
 // Pulls a human-readable message out of an API response, whatever shape the
 // backend used for that particular error (Laravel-style {message}/{errors},
@@ -57,7 +59,29 @@ export function showApiErrorAlert(title, response, fallback) {
     if (response === undefined || response?.isOffline || response?.isAuthError) {
         return;
     }
+    // The backend refused because of the subscription plan: offer the upgrade.
+    const limit = planLimitFrom(response);
+    if (limit) {
+        showPlanLimitAlert(getApiErrorMessage(response, fallback), limit);
+        return;
+    }
     showAlert(title, getApiErrorMessage(response, fallback));
+}
+
+export function showPlanLimitAlert(message, limit) {
+    const canUpgrade = limit?.upgrade_required !== false;
+    setTimeout(() => {
+        Alert.alert(
+            'Plan limit reached',
+            message,
+            canUpgrade
+                ? [
+                    { text: 'Not now', style: 'cancel' },
+                    { text: 'View plans', onPress: () => navigateTo('SubscriptionScreen') },
+                ]
+                : [{ text: 'OK' }],
+        );
+    }, Constants.commonConstant.animTime100);
 }
 
 export function showAlert(title, message, buttonTitle = 'OK') {
