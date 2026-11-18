@@ -3,6 +3,23 @@ import { Constants } from '../utils/theme';
 import { navigateTo } from '../utils/navigationRef';
 import { planLimitFrom } from '../utils/subscription';
 
+// A server, proxy or CDN can answer with an HTML error page instead of JSON.
+// That must never be shown to the user as the message (it is pages of markup),
+// nor can an overly long blob of text; use the friendly fallback instead.
+const MAX_MESSAGE_LENGTH = 300;
+export const SERVER_BUSY_MESSAGE = 'The server is busy right now. Please try again in a moment.';
+const HTML_PATTERN = /^\s*<(!doctype|html|head|body|\?xml)\b|<\/?(html|head|body|script|style|div|meta|title)\b/i;
+export function readableText(text, fallback) {
+    const value = String(text).trim();
+    if (HTML_PATTERN.test(value)) {
+        return SERVER_BUSY_MESSAGE; // an HTML page comes from the host/proxy, not from the API
+    }
+    if (value.length > MAX_MESSAGE_LENGTH) {
+        return fallback;
+    }
+    return value;
+}
+
 // Pulls a human-readable message out of an API response, whatever shape the
 // backend used for that particular error (Laravel-style {message}/{errors},
 // FastAPI-style {detail}, a plain network error string, or nothing at all),
@@ -20,15 +37,15 @@ export function getApiErrorMessage(response, fallback = 'Something went wrong. P
     }
 
     if (typeof data === 'string' && data.trim() !== '') {
-        return data;
+        return readableText(data, fallback);
     }
 
     if (typeof data?.message === 'string' && data.message.trim() !== '') {
-        return data.message;
+        return readableText(data.message, fallback);
     }
 
     if (typeof data?.detail === 'string' && data.detail.trim() !== '') {
-        return data.detail;
+        return readableText(data.detail, fallback);
     }
 
     if (Array.isArray(data?.detail) && data.detail.length > 0) {

@@ -43,7 +43,7 @@ import {useIsFocused} from '@react-navigation/native';
 import {LIGHT_CONTROLS, linkColor} from '../utils/theme/controlColors';
 import CalendarPickerModal from '../componentes/CalendarPickerModal';
 import {setCalendarSelectionOnServer} from '../utils/api/apiServices';
-import {refreshSubscription, subscribeToSubscription, STATUS_TEXT} from '../utils/subscription';
+import {planLimitFrom, refreshSubscription, subscribeToSubscription, STATUS_TEXT} from '../utils/subscription';
 import screens from '../utils/theme/screens';
 import {describeSelection, getDeviceCalendars, openCalendarApp, saveCalendarSelection} from '../utils/deviceCalendars';
 
@@ -142,12 +142,12 @@ const ProfileScreen = () => {
 
     const handleSaveCalendars = async ids => {
         // The backend enforces the plan's calendar limit: register the choice first.
+        // Only the plan-limit refusal blocks the connection. Any other failure
+        // (offline, server error, endpoint missing) must not stop calendar
+        // muting, which runs entirely on this phone.
         const registered = await setCalendarSelectionOnServer(ids);
-        if (
-            !registered?.isNetworkError &&
-            !(registered?.statusCode === 200 && registered?.data?.status === '1')
-        ) {
-            showApiErrorAlert(Constants.commonConstant.appName, registered, 'Your calendar choice could not be saved. Please try again.');
+        if (planLimitFrom(registered)) {
+            showApiErrorAlert(Constants.commonConstant.appName, registered, 'Your plan does not allow that many calendars.');
             return;
         }
         refreshSubscription();

@@ -78,6 +78,35 @@ export const FEATURE_LABELS = {
   devices: 'Connected devices',
 };
 
+// ---- lifetime (one-time) purchase -------------------------------------------
+
+/** True when at least one purchasable plan has a lifetime price (the server hides it otherwise). */
+export const lifetimeAvailable = plans =>
+  (plans?.plans || []).some(p => p.purchasable && Number(p.prices?.lifetime) > 0);
+
+/** " / month", " / year" or " one-time". */
+export const priceSuffix = interval => (interval === 'lifetime' ? ' one-time' : interval === 'year' ? ' / year' : ' / month');
+
+export const intervalTitle = interval => (interval === 'lifetime' ? 'Lifetime' : interval === 'year' ? 'Yearly' : 'Monthly');
+
+/** Line under the plan name: when it renews / ends, or that a lifetime plan never does. */
+export const billingSummary = snap => {
+  if (!snap?.subscribed_plan) return '';
+  if (snap.is_lifetime) {
+    const since = formatDate(snap.lifetime_paid_at);
+    return since ? `Lifetime · never expires · bought ${since}` : 'Lifetime · never expires';
+  }
+  if (!snap.current_period_end) return '';
+  return `${snap.cancel_at_period_end ? 'Ends' : 'Renews'} ${formatDate(snap.current_period_end)} · billed ${snap.billing_interval === 'year' ? 'yearly' : 'monthly'}`;
+};
+
+/** Badge next to the plan name ("Active", or "Lifetime" for a one-time purchase). */
+export const statusBadge = snap => (snap?.is_lifetime ? 'Lifetime' : STATUS_TEXT[snap?.status] || snap?.status || '');
+
+/** Label for a row of the payment list. */
+export const paymentAmountText = p =>
+  p.status === 'paid' ? formatPrice(p.amount_cents, p.currency) : p.status === 'refunded' ? 'Refunded' : 'Failed';
+
 export const limitText = limit => (limit === null || limit === undefined ? 'Unlimited' : String(limit));
 
 export const retentionText = days => (days === null || days === undefined ? 'Unlimited history' : `${days} days history`);

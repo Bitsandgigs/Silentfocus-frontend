@@ -32,14 +32,19 @@ import {
 } from '../utils/api/apiServices';
 import {
     FEATURE_LABELS,
-    STATUS_TEXT,
+    billingSummary,
     confirmPendingCheckout,
     formatDate,
     formatPrice,
     hasPendingCheckout,
+    intervalTitle,
+    lifetimeAvailable,
+    paymentAmountText,
     planLimitLines,
+    priceSuffix,
     refreshSubscription,
     rememberCheckoutSession,
+    statusBadge,
     subscribeToSubscription,
     usageText,
 } from '../utils/subscription';
@@ -113,6 +118,12 @@ export default function SubscriptionScreen() {
     const entitledPaid = snap && snap.subscribed_plan && ['active', 'trialing', 'past_due'].includes(snap.status);
     const rank = {free: 0, pro: 1, premium: 2};
     const currentKey = snap?.plan?.key;
+    // A lifetime owner has no monthly/yearly billing to change: the only thing left to buy is a higher
+    // plan for life. The Lifetime tab only exists while the server gives a plan a lifetime price.
+    const isLifetimeOwner = !!(snap && snap.is_lifetime);
+    const showLifetime = lifetimeAvailable(plans);
+    const activeInterval = isLifetimeOwner || (interval === 'lifetime' && showLifetime) ? 'lifetime' : interval === 'lifetime' ? 'month' : interval;
+    const intervalOptions = showLifetime ? ['month', 'year', 'lifetime'] : ['month', 'year'];
 
     const openUrl = async url => {
         try {
@@ -122,13 +133,27 @@ export default function SubscriptionScreen() {
         }
     };
 
-    const subscribe = async plan => {
+    const startCheckout = async plan => {
         setBusy(true);
-        const res = await createSubscriptionCheckout(plan.key, interval);
+        const res = await createSubscriptionCheckout(plan.key, activeInterval);
         setBusy(false);
         if (!ok(res)) return showApiErrorAlert('Silent Focus', res, 'Checkout could not be started.');
         rememberCheckoutSession(res.data.result.session_id);
         openUrl(res.data.result.checkout_url);
+    };
+
+    const subscribe = plan => {
+        if (activeInterval !== 'lifetime') return startCheckout(plan);
+        const recurring = entitledPaid && !isLifetimeOwner;
+        showAlertWithTwoCallBack(
+            `Get ${plan.name} for life?`,
+            `A one-time payment of ${formatPrice(plan.prices.lifetime, plan.currency)}. No renewals, and the plan never expires.` +
+                (recurring ? ' Your current subscription is cancelled once this payment is confirmed, so you are not charged twice.' : ''),
+            'Not now',
+            () => {},
+            'Continue',
+            () => startCheckout(plan),
+        );
     };
 
     const upgrade = plan => {
@@ -140,7 +165,7 @@ export default function SubscriptionScreen() {
             'Upgrade',
             async () => {
                 setBusy(true);
-                const res = await upgradeSubscription(plan.key, interval);
+                const res = await upgradeSubscription(plan.key, activeInterval);
                 setBusy(false);
                 if (!ok(res)) return showApiErrorAlert('Silent Focus', res, 'The upgrade could not be completed.');
                 await refreshSubscription();
@@ -247,12 +272,12 @@ export default function SubscriptionScreen() {
                         {snap.plan.name}
                     </Text>
                     <Text style={[styles.badge, {color: c.text, borderColor: c.line}]} testID="sub-current-status">
-                        {STATUS_TEXT[snap.status] || snap.status}
+                        {statusBadge(snap)}
                     </Text>
                 </View>
-                {snap.subscribed_plan && snap.current_period_end ? (
+                {billingSummary(snap) ? (
                     <Text style={[styles.small, {color: c.muted}]} testID="sub-current-renewal">
-                        {snap.cancel_at_period_end ? 'Ends' : 'Renews'} {formatDate(snap.current_period_end)} · billed {snap.billing_interval === 'year' ? 'yearly' : 'monthly'}
+                        {billingSummary(snap)}
                     </Text>
                 ) : null}
                 <View style={[styles.divider, {backgroundColor: c.line}]} />
@@ -278,7 +303,7 @@ export default function SubscriptionScreen() {
                 <Text style={[styles.small, {color: c.muted, marginTop: 6}]}>
                     History kept: {snap.history_retention_days === null ? 'unlimited' : `${snap.history_retention_days} days`}
                 </Text>
-                {entitledPaid ? (
+                {entitledPaid && !isLifetimeOwner ? (
                     <View style={styles.actions}>
                         {snap.cancel_at_period_end ? (
                             <TouchableOpacity testID="sub-resume" onPress={resume} accessibilityRole="button" style={styles.secondaryBtn}>
@@ -296,16 +321,21 @@ export default function SubscriptionScreen() {
     };
 
     const renderPlan = plan => {
-        const cents = plan.prices[interval];
-        const isCurrent = entitledPaid && currentKey === plan.key;
-        const isLower = entitledPaid && rank[plan.key] < rank[currentKey];
+        const lifetimeMode = activeInterval === 'lifetime';
+        const cents = plan.prices[activeInterval];
+        // Monthly/yearly view: your plan is "current". Lifetime view: only owning it for life counts,
+        // a recurring subscriber can still buy the same plan for life.
+        const isCurrent = entitledPaid && currentKey === plan.key && (!lifetimeMode || isLifetimeOwner);
+        const isLower = entitledPaid && rank[plan.key] < rank[currentKey] && (!lifetimeMode || isLifetimeOwner);
         let cta = null;
         if (isCurrent) {
-            cta = <Text style={[styles.currentTag, {color: c.muted}]}>Your current plan</Text>;
+            cta = <Text style={[styles.currentTag, {color: c.muted}]}>{isLifetimeOwner ? 'You own this for life' : 'Your current plan'}</Text>;
         } else if (isLower) {
             cta = <Text style={[styles.currentTag, {color: c.muted}]}>Below your current plan</Text>;
+        } else if (lifetimeMode && !(cents > 0)) {
+            cta = <Text style={[styles.currentTag, {color: c.muted}]} testID={`plan-${plan.key}-no-lifetime`}>No lifetime option for this plan</Text>;
         } else {
-            const upgradeMode = entitledPaid && snap.status !== 'past_due';
+            const upgradeMode = !lifetimeMode && entitledPaid && snap.status !== 'past_due';
             cta = (
                 <TouchableOpacity
                     testID={`plan-${plan.key}-cta`}
@@ -313,7 +343,9 @@ export default function SubscriptionScreen() {
                     onPress={() => (upgradeMode ? upgrade(plan) : subscribe(plan))}
                     accessibilityRole="button"
                     style={[styles.primaryBtn, (busy || !plans?.payments_configured) && {opacity: 0.5}]}>
-                    <Text style={styles.primaryText}>{upgradeMode ? `Upgrade to ${plan.name}` : `Choose ${plan.name}`}</Text>
+                    <Text style={styles.primaryText}>
+                        {upgradeMode ? `Upgrade to ${plan.name}` : lifetimeMode ? `Get ${plan.name} for life` : `Choose ${plan.name}`}
+                    </Text>
                 </TouchableOpacity>
             );
         }
@@ -322,8 +354,8 @@ export default function SubscriptionScreen() {
                 <View style={styles.rowBetween}>
                     <Text style={[styles.planName, {color: c.text}]}>{plan.name}</Text>
                     <Text style={[styles.price, {color: c.text}]} testID={`plan-${plan.key}-price`}>
-                        {formatPrice(cents, plan.currency)}
-                        <Text style={[styles.small, {color: c.muted}]}>{interval === 'year' ? ' / year' : ' / month'}</Text>
+                        {cents > 0 || !lifetimeMode ? formatPrice(cents, plan.currency) : '-'}
+                        {cents > 0 || !lifetimeMode ? <Text style={[styles.small, {color: c.muted}]}>{priceSuffix(activeInterval)}</Text> : null}
                     </Text>
                 </View>
                 {planLimitLines(plan.limits).map(line => (
@@ -370,20 +402,22 @@ export default function SubscriptionScreen() {
                             {plans?.test_mode ? <Text style={[styles.small, {color: c.muted, marginBottom: 8}]}>Payments are in test mode - no real charges.</Text> : null}
                             {renderStatusBanner()}
                             {renderCurrent()}
-                            <Text style={[styles.section, {color: c.text}]}>{entitledPaid ? 'Change plan' : 'Choose a plan'}</Text>
-                            <View style={[styles.toggle, {backgroundColor: c.card}]} accessibilityRole="tablist">
-                                {['month', 'year'].map(i => (
-                                    <TouchableOpacity
-                                        key={i}
-                                        testID={`interval-${i}`}
-                                        onPress={() => setInterval_(i)}
-                                        accessibilityRole="tab"
-                                        accessibilityState={{selected: interval === i}}
-                                        style={[styles.toggleItem, interval === i && {backgroundColor: ACTION_BUTTON_BG}]}>
-                                        <Text style={{color: interval === i ? '#fff' : c.text, fontWeight: '600'}}>{i === 'month' ? 'Monthly' : 'Yearly'}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                            <Text style={[styles.section, {color: c.text}]}>{isLifetimeOwner ? 'Get a higher plan for life' : entitledPaid ? 'Change plan' : 'Choose a plan'}</Text>
+                            {isLifetimeOwner ? null : (
+                                <View style={[styles.toggle, {backgroundColor: c.card}]} accessibilityRole="tablist">
+                                    {intervalOptions.map(i => (
+                                        <TouchableOpacity
+                                            key={i}
+                                            testID={`interval-${i}`}
+                                            onPress={() => setInterval_(i)}
+                                            accessibilityRole="tab"
+                                            accessibilityState={{selected: activeInterval === i}}
+                                            style={[styles.toggleItem, activeInterval === i && {backgroundColor: ACTION_BUTTON_BG}]}>
+                                            <Text style={{color: activeInterval === i ? '#fff' : c.text, fontWeight: '600'}}>{intervalTitle(i)}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            )}
                             {plans && !plans.payments_configured ? (
                                 <Text style={[styles.small, {color: c.badText, marginBottom: 8}]}>Payments are not available right now.</Text>
                             ) : null}
@@ -393,10 +427,10 @@ export default function SubscriptionScreen() {
                                     <Text style={[styles.cardLabel, {color: c.muted}]}>Recent payments</Text>
                                     {payments.slice(0, 5).map(p => (
                                         <View key={p.id} style={styles.rowBetween}>
-                                            <Text style={[styles.small, {color: c.text}]}>{formatDate(p.paid_at || p.created_at)} · {p.plan_key || ''}</Text>
-                                            <Text style={[styles.small, {color: p.status === 'paid' ? c.text : c.badText}]}>
-                                                {p.status === 'paid' ? formatPrice(p.amount_cents, p.currency) : 'Failed'}
+                                            <Text style={[styles.small, {color: c.text}]}>
+                                                {formatDate(p.paid_at || p.created_at)} · {p.plan_key || ''}{p.reason === 'lifetime' ? ' (lifetime)' : ''}
                                             </Text>
+                                            <Text style={[styles.small, {color: p.status === 'paid' ? c.text : c.badText}]}>{paymentAmountText(p)}</Text>
                                         </View>
                                     ))}
                                 </View>

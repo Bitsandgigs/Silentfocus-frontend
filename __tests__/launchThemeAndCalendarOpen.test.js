@@ -17,6 +17,13 @@ describe('launch surface (white/grey flash)', () => {
         expect(styles).toMatch(/android:windowBackground">@color\/sf_launch_background/);
         expect(styles).not.toMatch(/#FFFFFF|#ffffff/);
     });
+    test('Android 12+ system splash is a plain launch-coloured surface (no white icon circle)', () => {
+        const styles = res('values/styles.xml');
+        expect(styles).toMatch(/android:windowSplashScreenBackground"[^>]*>@color\/sf_launch_background/);
+        expect(styles).toMatch(/android:windowSplashScreenAnimatedIcon"[^>]*>@drawable\/sf_splash_empty_icon/);
+        expect(styles).toMatch(/android:windowSplashScreenIconBackgroundColor"[^>]*>@color\/sf_launch_background/);
+        expect(res('drawable/sf_splash_empty_icon.xml')).toMatch(/android:fillColor="#00000000"/);
+    });
     test('splash layout follows the launch color, not hardcoded white', () => {
         expect(res('layout/launch_screen.xml')).toMatch(/@color\/sf_launch_background/);
     });
