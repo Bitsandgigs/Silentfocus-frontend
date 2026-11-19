@@ -57,6 +57,7 @@ const REPLY_REASON = {
     COOLDOWN: 'Already replied to this sender recently',
     DISABLED: 'Auto reply is off',
     GROUP_CONVERSATION: 'Group chats are never auto-replied',
+    NOT_IN_PLAN: 'Automatic replies for this app are not included in your plan',
     UNKNOWN_SENDER: 'Sender could not be identified',
 };
 

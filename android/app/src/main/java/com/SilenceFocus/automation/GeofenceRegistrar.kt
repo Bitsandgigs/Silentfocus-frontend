@@ -97,7 +97,10 @@ object GeofenceRegistrar {
             !hasBackground(ctx) -> STATUS_NO_BACKGROUND
             else -> null
         }
-        val selected = if (settings.locationEnabled) selectZones(store.zones).take(MAX_GEOFENCES) else emptyList()
+        val plan = store.entitlements()
+        val selected = if (settings.locationEnabled && Entitlements.zonesAllowed(plan)) {
+            selectZones(Entitlements.capZones(store.zones, plan)).take(MAX_GEOFENCES)
+        } else emptyList()
         val search = store.placeSearch.takeIf { settings.publicPlacesActive }
         val places = if (search != null) PublicPlaces.placesForFences(store.publicPlaces, selected.size) else emptyList()
         val area = search?.takeIf { selected.size < MAX_GEOFENCES }

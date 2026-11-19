@@ -6,6 +6,7 @@ import {createStackNavigator} from '@react-navigation/stack';
 // Mics Constants
 import {AppContext} from '../../utils/context/contextProvider';
 import {RootStackScreens} from './RootNavigation.types';
+import {usePlanSync} from '../../utils/usePlanSync';
 
 // Stack
 import LoginStack from '../LoginStack/LoginStack';
@@ -20,6 +21,7 @@ export default function RootStack() {
     // Context Provider
     const {isSplashShow, isGetStarted, isLogin, isSessionLoaded} =
         useContext(AppContext);
+    usePlanSync(isLogin);
 
     // Render Component. Offline is shown as a banner (see OfflineBanner),
     // never by swapping screens, so connectivity can't log the user out.

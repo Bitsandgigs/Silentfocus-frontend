@@ -39,6 +39,15 @@
         <!-- #9/#11: Activity call rows open WhatsApp when its notification is gone. -->
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <!-- Messaging apps offered for automatic replies (Pro: pick 1). -->
+        <package android:name="com.linkedin.android" />
+        <package android:name="com.instagram.android" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="org.thoughtcrime.securesms" />
+        <package android:name="com.Slack" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.microsoft.teams" />
         <!-- "Open calendar app": resolve whichever app handles calendar VIEW. -->
         <intent>
             <action android:name="android.intent.action.VIEW" />

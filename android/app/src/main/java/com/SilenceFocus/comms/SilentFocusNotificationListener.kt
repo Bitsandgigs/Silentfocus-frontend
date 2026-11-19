@@ -161,7 +161,14 @@ object MessageAutoReply {
         val silence = SilenceContext(active = true, sessionId = session, zoneId = activeZoneId(engine))
         val marks = AutoReplyPolicy.pruneMarks(comms.replyMarks, now)
         val times = comms.replyTimes.filter { now - it < 60 * 60_000L }
-        val decision = AutoReplyPolicy.decide(settings, silence, msg, marks, times.size, now)
+        val plan = com.SilenceFocus.automation.EngineStore(ctx).entitlements(now)
+        val inPlan = com.SilenceFocus.automation.Entitlements.autoReplyAllowed(plan) &&
+            com.SilenceFocus.automation.Entitlements.appAllowed(plan, sbn.packageName, comms.autoReplyApps)
+        val decision = if (inPlan || !settings.enabled) {
+            AutoReplyPolicy.decide(settings, silence, msg, marks, times.size, now)
+        } else {
+            ReplyDecision(ReplyStatus.SKIPPED, AutoReplyPolicy.REASON_PLAN)
+        }
         if (decision.reason == AutoReplyPolicy.REASON_OWN_MESSAGE) return
 
         val app = appLabel(ctx, sbn, n)

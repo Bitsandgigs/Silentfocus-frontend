@@ -4,6 +4,7 @@
 // only caches the last response, lets screens subscribe to it and formats it.
 
 import {getSubscription, syncSubscription} from './api/apiServices';
+import {clearEntitlements, pushEntitlements} from './entitlements';
 
 let snapshot = null; // last server response (result object)
 let lastError = null;
@@ -20,6 +21,7 @@ export const subscribeToSubscription = listener => {
 
 export const getSubscriptionSnapshot = () => snapshot;
 export const clearSubscriptionState = () => {
+  clearEntitlements();
   snapshot = null;
   lastError = null;
   pendingSessionId = null;
@@ -35,6 +37,7 @@ const accept = response => {
   if (response?.statusCode === 200 && response?.data?.status === '1' && response.data.result) {
     snapshot = response.data.result;
     lastError = null;
+    pushEntitlements(snapshot);
     emit();
     return snapshot;
   }
@@ -74,7 +77,7 @@ export const FEATURE_LABELS = {
   calendars: 'Connected calendars',
   schedules: 'Active schedules',
   zones: 'Location zones',
-  automation_rules: 'Automation rules',
+  automation_rules: 'Automatic reply texts',
   devices: 'Connected devices',
 };
 
@@ -101,7 +104,26 @@ export const billingSummary = snap => {
 };
 
 /** Badge next to the plan name ("Active", or "Lifetime" for a one-time purchase). */
-export const statusBadge = snap => (snap?.is_lifetime ? 'Lifetime' : STATUS_TEXT[snap?.status] || snap?.status || '');
+export const statusBadge = snap => {
+  if (snap?.is_lifetime) return 'Lifetime';
+  if (snap?.trial?.active) return 'Free trial';
+  if (snap?.trial?.ended && !snap?.subscribed_plan) return 'Trial ended';
+  return STATUS_TEXT[snap?.status] || snap?.status || '';
+};
+
+/** Banner text for the free trial: days left while it runs, what is locked once it ended; '' otherwise. */
+export const trialSummary = snap => {
+  const t = snap?.trial;
+  if (!t) return '';
+  if (t.active) {
+    const days = Number(t.days_left) || 0;
+    return `Free trial: ${days <= 1 ? 'last day' : `${days} days left`}. Every feature is unlocked with no limits. You can subscribe at any time.`;
+  }
+  if (t.ended && !snap.subscribed_plan) {
+    return 'Your 7-day free trial has ended. Manual silent mode stays free. Calendars, Silent Zones and automatic replies are locked until you choose a plan.';
+  }
+  return '';
+};
 
 /** Label for a row of the payment list. */
 export const paymentAmountText = p =>
@@ -114,12 +136,22 @@ export const retentionText = days => (days === null || days === undefined ? 'Unl
 /** "3 / 10" or "2 / Unlimited" */
 export const usageText = feature => `${feature.used} / ${limitText(feature.limit)}`;
 
+const count = (n, one, many) => (n === null || n === undefined ? `Unlimited ${many}` : n === 0 ? `No ${many}` : n === 1 ? `1 ${one}` : `${n} ${many}`);
+
 export const planLimitLines = limits => [
-  limits.calendars === 1 ? '1 calendar' : limits.calendars === null ? 'Multiple calendars' : `${limits.calendars} calendars`,
-  limits.schedules === null ? 'Unlimited active schedules' : `${limits.schedules} active schedules`,
-  limits.zones === null ? 'Unlimited location zones' : `${limits.zones} location zones`,
-  limits.automation_rules === null ? 'Unlimited automation rules' : `${limits.automation_rules} automation rules`,
-  `${limits.devices} connected devices`,
+  count(limits.zones, 'Silent Zone', 'Silent Zones'),
+  count(limits.calendars, 'calendar', 'calendars'),
+  limits.connected_apps === null || limits.connected_apps === undefined
+    ? 'All supported messaging apps'
+    : limits.connected_apps === 0
+    ? 'No automatic replies'
+    : `Automatic replies in ${limits.connected_apps} messaging app${limits.connected_apps === 1 ? '' : 's'}`,
+  limits.automation_rules === null || limits.automation_rules === undefined
+    ? 'Unlimited reply texts'
+    : limits.automation_rules === 0
+    ? 'No reply texts'
+    : `Default reply + ${Math.max(0, limits.automation_rules - 1)} zone repl${limits.automation_rules - 1 === 1 ? 'y' : 'ies'}`,
+  count(limits.zone_suggestions, 'suggested zone', 'suggested zones'),
   retentionText(limits.history_retention_days),
 ];
 

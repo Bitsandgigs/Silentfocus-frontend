@@ -32,12 +32,21 @@ object AutomationEngine {
 
     /** Rule sources, highest priority first (Manual is the override). */
     private fun evaluator(store: EngineStore, once: List<OnceSchedule>): AutomationEvaluator {
+        // The plan decides what may silence the phone: Free (or a lapsed trial) locks zones and calendars,
+        // Pro caps the number of zones. Schedules and manual mode are never restricted.
+        val plan = store.entitlements()
         return AutomationEvaluator(
             listOf(
-                LocationRuleProvider(store.zones, store.zonePresence, store.settings.locationEnabled),
+                LocationRuleProvider(
+                    Entitlements.capZones(store.zones, plan), store.zonePresence,
+                    store.settings.locationEnabled && Entitlements.zonesAllowed(plan),
+                ),
                 ScheduleRuleProvider(store.schedules),
                 OnceScheduleProvider(once),
-                CalendarRuleProvider(store.calendarEvents, store.settings),
+                CalendarRuleProvider(
+                    store.calendarEvents,
+                    store.settings.copy(calendarEnabled = store.settings.calendarEnabled && Entitlements.calendarsAllowed(plan)),
+                ),
             ),
         )
     }

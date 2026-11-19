@@ -29,6 +29,10 @@ import {
 import {pushAutoReply, syncAutoReply} from '../utils/autoResponseSync';
 import {fetchZonesForSync} from '../utils/automationSync';
 import {ACTION_BUTTON_BG} from '../utils/theme/controlColors';
+import PlanLockCard from '../componentes/PlanLockCard';
+import screens from '../utils/theme/screens';
+import {refreshSubscription, subscribeToSubscription} from '../utils/subscription';
+import {getMessagingApps, setAutoReplyApps} from '../utils/entitlements';
 
 const ORANGE = '#D6721E';
 
@@ -47,6 +51,9 @@ const AutoReplyScreen = () => {
     const [defaultDraft, setDefaultDraft] = useState(DEFAULT_REPLY);
     const [zoneDrafts, setZoneDrafts] = useState({});
     const [dirty, setDirty] = useState(false);
+    // The user's plan (server snapshot) and the messaging apps picked for replies.
+    const [plan, setPlan] = useState(null);
+    const [msgApps, setMsgApps] = useState({apps: [], chosen: []});
     // 'saving' | 'saved' | null: feedback for "Save replies" (it used to just grey out).
     const [saveStatus, setSaveStatus] = useState(null);
     // Read inside async callbacks: a sync that finishes while the user is
@@ -91,7 +98,38 @@ const AutoReplyScreen = () => {
         return () => sub.remove();
     }, [refresh]);
 
+    useEffect(() => {
+        const unsub = subscribeToSubscription(({snapshot}) => setPlan(snapshot));
+        refreshSubscription().catch(() => {});
+        getMessagingApps().then(setMsgApps).catch(() => {});
+        return unsub;
+    }, []);
+
     const ar = state.autoReply;
+    // Server limits: automation_rules 0 = automatic replies locked; connected_apps null = every app, N = pick N.
+    const repliesLocked = plan?.limits?.automation_rules === 0;
+    const appLimit = plan?.limits?.connected_apps;
+    const appsLimited = !repliesLocked && appLimit !== null && appLimit !== undefined;
+    const openPlans = () => navigation.navigate(screens.SubscriptionScreen);
+
+    const toggleApp = async pkg => {
+        const has = msgApps.chosen.includes(pkg);
+        if (!has && msgApps.chosen.length >= appLimit) {
+            Alert.alert(
+                'Silent Focus',
+                `Your plan allows automatic replies in ${appLimit} messaging app${appLimit === 1 ? '' : 's'}. Remove one first, or upgrade to Premium for all supported apps.`,
+            );
+            return;
+        }
+        const next = has ? msgApps.chosen.filter(p => p !== pkg) : [...msgApps.chosen, pkg];
+        setMsgApps(prev => ({...prev, chosen: next}));
+        try {
+            const r = await setAutoReplyApps(next);
+            if (r?.chosen) setMsgApps(prev => ({...prev, chosen: r.chosen}));
+        } catch (e) {
+            getMessagingApps().then(setMsgApps).catch(() => {});
+        }
+    };
 
     const update = async patch => {
         setState(prev => ({...prev, autoReply: {...prev.autoReply, ...patch}}));
@@ -162,7 +200,50 @@ const AutoReplyScreen = () => {
                         </View>
                     ) : null}
 
-                    <View style={[styles.row, {backgroundColor: card}]}>
+                    {repliesLocked ? (
+                        <PlanLockCard
+                            testID="auto-reply-lock"
+                            title="Automatic replies are not in your plan"
+                            body={plan?.trial?.ended
+                                ? 'Your free trial has ended. Choose Pro or Premium to unlock automatic replies. Manual silent mode stays free.'
+                                : 'Choose Pro or Premium to unlock automatic replies. Manual silent mode stays free.'}
+                            onPress={openPlans}
+                        />
+                    ) : null}
+                    {appsLimited ? (
+                        <View style={[styles.banner, {backgroundColor: card}]} testID="auto-reply-apps">
+                            <Text style={[styles.bannerTitle, {color: text}]}>
+                                Reply in {appLimit} app{appLimit === 1 ? '' : 's'} (Pro)
+                            </Text>
+                            <Text style={[styles.body, {color: muted}]}>
+                                {msgApps.chosen.length === 0
+                                    ? `Choose the messaging app to reply in. Until you choose, no automatic replies are sent. Premium covers all supported apps.`
+                                    : `Chosen: ${msgApps.chosen.length} of ${appLimit}. Premium covers all supported apps.`}
+                            </Text>
+                            {msgApps.apps.length === 0 ? (
+                                <Text style={[styles.body, {color: muted}]}>No supported messaging apps were found on this phone.</Text>
+                            ) : (
+                                <View style={[styles.chips, {marginTop: 10}]}>
+                                    {msgApps.apps.map(a => {
+                                        const selected = msgApps.chosen.includes(a.packageName);
+                                        return (
+                                            <TouchableOpacity
+                                                key={a.packageName}
+                                                onPress={() => toggleApp(a.packageName)}
+                                                style={[styles.chip, selected && styles.chipSelected]}
+                                                testID={`auto-reply-app-${a.packageName}`}
+                                                accessibilityRole="checkbox"
+                                                accessibilityState={{checked: selected}}>
+                                                <Text style={[styles.chipText, {color: selected ? '#fff' : muted}]}>{a.label}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            )}
+                        </View>
+                    ) : null}
+
+                    <View style={[styles.row, {backgroundColor: card}, repliesLocked && styles.disabled]} pointerEvents={repliesLocked ? 'none' : 'auto'}>
                         <View style={styles.flex}>
                             <Text style={[styles.rowTitle, {color: text}]}>Reply to messaging apps</Text>
                             <Text style={[styles.body, {color: muted}]}>
@@ -180,6 +261,7 @@ const AutoReplyScreen = () => {
                         />
                     </View>
 
+                    <View pointerEvents={repliesLocked ? 'none' : 'auto'} style={repliesLocked ? styles.disabled : null}>
                     <Text style={[styles.section, {color: text}]}>HOW OFTEN</Text>
                     <View style={styles.chips}>
                         {REPLY_COOLDOWN_OPTIONS.map(o => {
@@ -257,6 +339,8 @@ const AutoReplyScreen = () => {
                             Replies saved on this phone.
                         </Text>
                     )}
+
+                    </View>
 
                     <Text style={[styles.section, {color: text}]}>SMS AND MISSED CALLS</Text>
                     <Text style={[styles.body, {color: muted}]}>

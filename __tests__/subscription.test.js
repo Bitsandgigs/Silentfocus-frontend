@@ -49,9 +49,9 @@ const PLANS = {
     payments_configured: true,
     test_mode: true,
     plans: [
-        {key: 'free', name: 'Free', purchasable: false, currency: 'usd', prices: {month: 0, year: 0}, limits: {calendars: 0, schedules: 2, zones: 1, automation_rules: 2, devices: 1, history_retention_days: 7}},
-        {key: 'pro', name: 'Pro', purchasable: true, currency: 'usd', prices: {month: 499, year: 4990}, limits: {calendars: 1, schedules: 10, zones: 3, automation_rules: 10, devices: 2, history_retention_days: 30}},
-        {key: 'premium', name: 'Premium', purchasable: true, currency: 'usd', prices: {month: 999, year: 9990}, limits: {calendars: null, schedules: null, zones: null, automation_rules: null, devices: 5, history_retention_days: 365}},
+        {key: 'free', name: 'Free', purchasable: false, currency: 'usd', prices: {month: 0, year: 0}, limits: {calendars: 0, schedules: 2, zones: 0, automation_rules: 0, devices: 1, connected_apps: 0, zone_suggestions: 0, history_retention_days: 7}},
+        {key: 'pro', name: 'Pro', purchasable: true, currency: 'usd', prices: {month: 499, year: 4990}, limits: {calendars: 1, schedules: null, zones: 3, automation_rules: 4, devices: null, connected_apps: 1, zone_suggestions: 3, history_retention_days: 30}},
+        {key: 'premium', name: 'Premium', purchasable: true, currency: 'usd', prices: {month: 999, year: 9990}, limits: {calendars: null, schedules: null, zones: null, automation_rules: null, devices: null, connected_apps: null, zone_suggestions: null, history_retention_days: 365}},
     ],
 };
 
@@ -103,9 +103,10 @@ describe('formatting / helpers', () => {
         expect(usageText({used: 3, limit: 10})).toBe('3 / 10');
         expect(usageText({used: 2, limit: null})).toBe('2 / Unlimited');
     });
-    test('plan feature lines use server limits (null = unlimited)', () => {
-        expect(planLimitLines(PLANS.plans[1].limits)).toEqual(['1 calendar', '10 active schedules', '3 location zones', '10 automation rules', '2 connected devices', '30 days history']);
-        expect(planLimitLines(PLANS.plans[2].limits)).toEqual(['Multiple calendars', 'Unlimited active schedules', 'Unlimited location zones', 'Unlimited automation rules', '5 connected devices', '365 days history']);
+    test('plan feature lines use server limits (null = unlimited, 0 = locked)', () => {
+        expect(planLimitLines(PLANS.plans[1].limits)).toEqual(['3 Silent Zones', '1 calendar', 'Automatic replies in 1 messaging app', 'Default reply + 3 zone replies', '3 suggested zones', '30 days history']);
+        expect(planLimitLines(PLANS.plans[2].limits)).toEqual(['Unlimited Silent Zones', 'Unlimited calendars', 'All supported messaging apps', 'Unlimited reply texts', 'Unlimited suggested zones', '365 days history']);
+        expect(planLimitLines(PLANS.plans[0].limits)).toEqual(['No Silent Zones', 'No calendars', 'No automatic replies', 'No reply texts', 'No suggested zones', '7 days history']);
     });
     test('planLimitFrom only recognises the backend refusal', () => {
         const refusal = {statusCode: 403, data: {status: '0', result: {code: 'plan_limit_reached', feature: 'zones'}}};
@@ -141,6 +142,19 @@ describe('subscription store', () => {
 });
 
 describe('SubscriptionScreen', () => {
+    test('free trial shows days left and still offers the plans', async () => {
+        const tree = await mount(snapshot({status: 'trialing', plan: PLANS.plans[2], trial: {started: true, active: true, ended: false, days_left: 5}}));
+        const t = texts(tree);
+        expect(byId(tree, 'sub-trial')).toBeTruthy();
+        expect(t).toMatch(/Free trial: 5 days left/);
+        expect(t).toContain('Free trial');
+        expect(t).toContain('Choose Pro');
+    });
+    test('after the trial the screen says what is locked', async () => {
+        const tree = await mount(snapshot({status: 'expired', trial: {started: true, active: false, ended: true, days_left: 0}}));
+        expect(texts(tree)).toMatch(/Calendars, Silent Zones and automatic replies are locked/);
+        expect(texts(tree)).toContain('Trial ended');
+    });
     test('new user sees Pro and Premium with prices, limits and Choose buttons', async () => {
         const tree = await mount(snapshot());
         const t = texts(tree);
@@ -148,7 +162,7 @@ describe('SubscriptionScreen', () => {
         expect(t).toContain('$4.99');
         expect(t).toContain('Premium');
         expect(t).toContain('$9.99');
-        expect(t).toContain('Unlimited active schedules');
+        expect(t).toContain('Unlimited Silent Zones');
         expect(t).toContain('Choose Pro');
         expect(t).toContain('Choose Premium');
         expect(t).toContain('Payments are in test mode');

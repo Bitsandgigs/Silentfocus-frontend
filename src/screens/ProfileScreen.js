@@ -8,6 +8,7 @@ import {
     ScrollView,
     Modal,
     Pressable,
+    Alert,
     useColorScheme,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -43,7 +44,7 @@ import {useIsFocused} from '@react-navigation/native';
 import {LIGHT_CONTROLS, linkColor} from '../utils/theme/controlColors';
 import CalendarPickerModal from '../componentes/CalendarPickerModal';
 import {setCalendarSelectionOnServer} from '../utils/api/apiServices';
-import {planLimitFrom, refreshSubscription, subscribeToSubscription, STATUS_TEXT} from '../utils/subscription';
+import {planLimitFrom, refreshSubscription, statusBadge, subscribeToSubscription} from '../utils/subscription';
 import screens from '../utils/theme/screens';
 import {describeSelection, getDeviceCalendars, openCalendarApp, saveCalendarSelection} from '../utils/deviceCalendars';
 
@@ -133,6 +134,21 @@ const ProfileScreen = () => {
     // Exchange, local...). The native engine silences during their events;
     // nothing is uploaded or turned into schedules.
     const openCalendarPicker = async () => {
+        // Calendars are locked on the Free plan (after the trial): offer the plans instead of a picker that
+        // could not be saved.
+        if (subscription?.limits?.calendars === 0) {
+            Alert.alert(
+                Constants.commonConstant.appName,
+                subscription?.trial?.ended
+                    ? 'Your free trial has ended. Choose Pro or Premium to connect calendars. Manual silent mode stays free.'
+                    : 'Calendars are not part of your current plan. Choose Pro or Premium to connect calendars.',
+                [
+                    {text: 'Not now', style: 'cancel'},
+                    {text: 'See plans', onPress: () => navigation.navigate(screens.SubscriptionScreen)},
+                ],
+            );
+            return;
+        }
         const permission = await askCalendarPermission();
         if (permission === 'granted') setModalVisible(true);
     };
@@ -514,7 +530,7 @@ const ProfileScreen = () => {
                             accessibilityHint="Shows your plan, usage and available upgrades.">
                             <Field
                                 label={subscription ? `${subscription.plan.name} plan` : 'Plans'}
-                                value={subscription ? (STATUS_TEXT[subscription.status] || '') + '  ›' : 'View  ›'}
+                                value={subscription ? statusBadge(subscription) + '  ›' : 'View  ›'}
                                 color={link}
                             />
                         </TouchableOpacity>

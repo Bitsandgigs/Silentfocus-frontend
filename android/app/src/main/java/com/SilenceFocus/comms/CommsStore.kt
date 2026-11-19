@@ -232,12 +232,17 @@ class CommsStore(private val kv: KeyValue) {
         get() = FieldCodec.decode(kv.getString(KEY_SEEN)).mapNotNull { it.firstOrNull()?.takeIf(String::isNotEmpty) }
         set(value) = kv.putString(KEY_SEEN, FieldCodec.encode(value.takeLast(100).map { listOf(it) }))
 
+    /** Messaging apps (package names) the user picked for automatic replies; only enforced when the plan limits apps. */
+    var autoReplyApps: List<String>
+        get() = FieldCodec.decode(kv.getString(KEY_AR_APPS)).mapNotNull { it.firstOrNull()?.takeIf(String::isNotBlank) }
+        set(value) = kv.putString(KEY_AR_APPS, FieldCodec.encode(value.distinct().take(50).map { listOf(it) }))
+
     /** Logout: forget contacts, templates and all communication history. */
     fun clearUserData() = kv.remove(
         listOf(
             KEY_EMERGENCY_ENABLED, KEY_URGENT_ENABLED, KEY_URGENT_THRESHOLD, KEY_URGENT_WINDOW,
             KEY_URGENT_COOLDOWN, KEY_CONTACTS, KEY_CALLS, KEY_COOLDOWNS, KEY_AR_ENABLED,
-            KEY_AR_MESSAGING, KEY_AR_DEFAULT, KEY_AR_COOLDOWN, KEY_AR_ZONES, KEY_AR_MARKS,
+            KEY_AR_MESSAGING, KEY_AR_DEFAULT, KEY_AR_COOLDOWN, KEY_AR_ZONES, KEY_AR_APPS, KEY_AR_MARKS,
             KEY_AR_TIMES, KEY_SEEN, KEY_WA_CALLS, KEY_WA_COOLDOWNS, KEY_WA_TRACKED,
             KEY_WA_ALERTS, KEY_WA_NAME_MATCH, KEY_WA_ALERTS_SENT, KEY_WA_EPISODES, KEY_WA_ALERT_AT,
             KEY_SIM_CALL_MODE, KEY_SIM_ALERT, KEY_CELL_CALL,
@@ -261,6 +266,7 @@ class CommsStore(private val kv: KeyValue) {
         private const val KEY_AR_DEFAULT = "auto_reply_default"
         private const val KEY_AR_COOLDOWN = "auto_reply_cooldown_min"
         private const val KEY_AR_ZONES = "auto_reply_zone_templates"
+        private const val KEY_AR_APPS = "auto_reply_apps"
         private const val KEY_AR_MARKS = "auto_reply_marks"
         private const val KEY_AR_TIMES = "auto_reply_times"
         private const val KEY_SEEN = "seen_notifications"

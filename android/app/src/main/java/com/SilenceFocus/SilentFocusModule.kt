@@ -265,6 +265,46 @@ class SilentFocusModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
+     * The plan's limits for what may run on this phone: {calendars, zones, replies, apps, suggestions} (null =
+     * unlimited, 0 = locked) and [untilMillis] (0 = never lapses by itself). Re-evaluates so a lock or unlock
+     * takes effect immediately.
+     */
+    @ReactMethod
+    fun setEntitlements(limits: ReadableMap, untilMillis: Double, promise: Promise) = run(promise) {
+        fun lim(key: String): Int? =
+            if (!limits.hasKey(key) || limits.isNull(key)) null else limits.getInt(key).coerceAtLeast(0)
+        EngineStore(reactContext).setEntitlements(
+            com.SilenceFocus.automation.PlanLimits(lim("calendars"), lim("zones"), lim("replies"), lim("apps"), lim("suggestions")),
+            untilMillis.toLong().coerceAtLeast(0L),
+        )
+        GeofenceRegistrar.sync(reactContext, force = false)
+        AutomationEngine.evaluate(reactContext, TriggerReason.APP_RESUMED)
+    }
+
+    /** Known messaging apps installed on this phone: {apps: [{packageName, label}], chosen: [packageName]}. */
+    @ReactMethod
+    fun getMessagingApps(promise: Promise) = run(promise) {
+        JSONObject().apply {
+            put("apps", JSONArray().apply {
+                com.SilenceFocus.comms.MessagingApps.installed(reactContext).forEach { (pkg, label) ->
+                    put(JSONObject().put("packageName", pkg).put("label", label))
+                }
+            })
+            put("chosen", JSONArray(CommsStore(reactContext).autoReplyApps))
+        }
+    }
+
+    /** The messaging apps picked for automatic replies (only enforced while the plan limits apps). */
+    @ReactMethod
+    fun setAutoReplyApps(packages: ReadableArray, promise: Promise) = run(promise) {
+        val list = (0 until packages.size()).mapNotNull { i ->
+            if (packages.getType(i) == ReadableType.String) packages.getString(i) else null
+        }.filter { it in com.SilenceFocus.comms.MessagingApps.KNOWN }
+        CommsStore(reactContext).autoReplyApps = list
+        JSONObject().put("chosen", JSONArray(list))
+    }
+
+    /**
      * Opens a calendar app (system choice; chooser when several exist). It does
      * not depend on, or change, which calendars Silent Focus uses. Resolves
      * "app" | "chooser"; rejects ERR_NO_CALENDAR_APP when none can handle it.

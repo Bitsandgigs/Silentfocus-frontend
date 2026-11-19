@@ -39,12 +39,14 @@ import {
     hasPendingCheckout,
     intervalTitle,
     lifetimeAvailable,
+    limitText,
     paymentAmountText,
     planLimitLines,
     priceSuffix,
     refreshSubscription,
     rememberCheckoutSession,
     statusBadge,
+    trialSummary,
     subscribeToSubscription,
     usageText,
 } from '../utils/subscription';
@@ -237,6 +239,9 @@ export default function SubscriptionScreen() {
                 />
             );
         }
+        if (snap.status === 'expired' && snap.trial?.ended && !snap.subscribed_plan) {
+            return <Banner tone="warn" testID="sub-banner-trial-ended" title="Your free trial has ended" body="You are on the Free plan. Choose a plan below to unlock calendars, Silent Zones and automatic replies." />;
+        }
         if (snap.status === 'expired') {
             return <Banner tone="bad" testID="sub-banner-expired" title="Your subscription has expired" body="You are on the Free plan. Choose a plan below to get your limits back." />;
         }
@@ -267,6 +272,11 @@ export default function SubscriptionScreen() {
         return (
             <View style={[styles.card, {backgroundColor: c.card}]} testID="sub-current">
                 <Text style={[styles.cardLabel, {color: c.muted}]}>Current plan</Text>
+                {trialSummary(snap) ? (
+                    <View style={[styles.trialBox, {borderColor: ACTION_BUTTON_BG}]} testID="sub-trial">
+                        <Text style={[styles.small, {color: c.text}]}>{trialSummary(snap)}</Text>
+                    </View>
+                ) : null}
                 <View style={styles.rowBetween}>
                     <Text style={[styles.planName, {color: c.text}]} testID="sub-current-plan">
                         {snap.plan.name}
@@ -300,6 +310,16 @@ export default function SubscriptionScreen() {
                         </View>
                     );
                 })}
+                {snap.limits ? (
+                    <View testID="usage-phone-side">
+                        <Text style={[styles.small, {color: c.muted, marginTop: 6}]}>
+                            Messaging apps for automatic replies: {snap.limits.connected_apps === null || snap.limits.connected_apps === undefined ? 'all supported' : snap.limits.connected_apps}
+                        </Text>
+                        <Text style={[styles.small, {color: c.muted}]}>
+                            Suggested Silent Zones: {limitText(snap.limits.zone_suggestions)}
+                        </Text>
+                    </View>
+                ) : null}
                 <Text style={[styles.small, {color: c.muted, marginTop: 6}]}>
                     History kept: {snap.history_retention_days === null ? 'unlimited' : `${snap.history_retention_days} days`}
                 </Text>
@@ -449,6 +469,7 @@ export default function SubscriptionScreen() {
 }
 
 const styles = StyleSheet.create({
+    trialBox: {borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 6, marginBottom: 8},
     header: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8},
     back: {padding: 8, marginRight: 4},
     title: {fontSize: 20, fontWeight: '700'},

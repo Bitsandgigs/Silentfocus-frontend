@@ -64,8 +64,12 @@ object LearningCapture {
         Log.i(TAG, "manual activation sample: ${r.result}")
         var places = r.places
         val place = places.firstOrNull { it.id == r.placeId }
-        val suggest = place != null && store.pendingSuggestionId == null && learner.canSuggest(place, zones, fix.at, tz)
+        val planAllows = com.SilenceFocus.automation.Entitlements.suggestionAllowed(
+            EngineStore(context).entitlements(), store.suggestionsShown,
+        )
+        val suggest = planAllows && place != null && store.pendingSuggestionId == null && learner.canSuggest(place, zones, fix.at, tz)
         if (suggest) {
+            store.suggestionsShown = store.suggestionsShown + 1
             places = learner.markSuggested(places, place!!.id, fix.at)
             store.pendingSuggestionId = place.id
         }

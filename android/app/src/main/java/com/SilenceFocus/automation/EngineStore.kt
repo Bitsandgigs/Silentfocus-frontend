@@ -166,6 +166,25 @@ class EngineStore(context: Context) {
             if (value == null) remove(KEY_CAL_SELECTION) else putString(KEY_CAL_SELECTION, JSONArray(value.sorted()).toString())
         }.apply()
 
+    // ---- Plan entitlements (pushed from JS after every subscription refresh; see Entitlements)
+
+    private var entitlementJson: String?
+        get() = prefs.getString(KEY_ENTITLEMENTS, null)
+        set(value) = prefs.edit().apply { if (value == null) remove(KEY_ENTITLEMENTS) else putString(KEY_ENTITLEMENTS, value) }.apply()
+
+    private var entitlementUntil: Long
+        get() = prefs.getLong(KEY_ENTITLEMENT_UNTIL, 0L)
+        set(value) = prefs.edit().putLong(KEY_ENTITLEMENT_UNTIL, value).apply()
+
+    fun setEntitlements(limits: PlanLimits?, untilMillis: Long) {
+        entitlementJson = limits?.let { Entitlements.toJson(it) }
+        entitlementUntil = untilMillis
+    }
+
+    /** What the plan allows right now; unrestricted until the first sync, Free after the stored plan lapsed. */
+    fun entitlements(now: Long = System.currentTimeMillis()): PlanLimits =
+        Entitlements.effective(Entitlements.parse(entitlementJson), entitlementUntil, now)
+
     // ---- Manual override
 
     var override: ManualOverride
@@ -470,6 +489,8 @@ class EngineStore(context: Context) {
         private const val KEY_CAL_STATUS = "calendar_status"
         private const val KEY_CAL_LAST_SYNC = "calendar_last_sync"
         private const val KEY_CAL_SELECTION = "calendar_selection"
+        private const val KEY_ENTITLEMENTS = "plan_entitlements"
+        private const val KEY_ENTITLEMENT_UNTIL = "plan_entitlement_until"
 
         /** "[1,2]" -> {1, 2}; null / malformed -> null (all calendars). */
         fun parseIds(json: String?): Set<Long>? {

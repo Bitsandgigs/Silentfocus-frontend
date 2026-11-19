@@ -90,6 +90,8 @@ object AutoReplyPolicy {
     const val REASON_RATE_LIMIT = "RATE_LIMIT"
     const val REASON_NO_REPLY_ACTION = "NO_REPLY_ACTION"
     const val REASON_NO_SENDER = "UNKNOWN_SENDER"
+    /** The user's plan does not include automatic replies (or not for this app). */
+    const val REASON_PLAN = "NOT_IN_PLAN"
 
     /** Clock slack between the messaging app's timestamps and ours. */
     const val PRE_SESSION_TOLERANCE_MS = 60_000L

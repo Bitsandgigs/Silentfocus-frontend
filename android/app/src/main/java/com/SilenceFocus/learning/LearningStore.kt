@@ -31,6 +31,11 @@ class LearningStore(private val kv: KeyValue) {
         get() = kv.getString(KEY_PENDING)?.ifEmpty { null }
         set(value) = kv.putString(KEY_PENDING, value)
 
+    /** How many suggestions were ever offered to this account (the plan caps it); kept when learned places are cleared. */
+    var suggestionsShown: Int
+        get() = kv.getInt(KEY_SHOWN, 0)
+        set(value) = kv.putInt(KEY_SHOWN, value)
+
     var places: List<LearnedPlace>
         get() = FieldCodec.decode(kv.getString(KEY_PLACES)).mapNotNull(::decode)
         set(value) = kv.putString(KEY_PLACES, FieldCodec.encode(value.map(::encode)))
@@ -39,7 +44,7 @@ class LearningStore(private val kv: KeyValue) {
     fun clearLearned() = kv.remove(listOf(KEY_PLACES, KEY_PENDING))
 
     /** Logout: everything, including the opt-in. */
-    fun clearUserData() = kv.remove(listOf(KEY_PLACES, KEY_PENDING, KEY_ENABLED, KEY_OPT_IN_ANSWERED))
+    fun clearUserData() = kv.remove(listOf(KEY_PLACES, KEY_PENDING, KEY_ENABLED, KEY_OPT_IN_ANSWERED, KEY_SHOWN))
 
     private fun encode(p: LearnedPlace) = listOf(
         p.id,
@@ -78,6 +83,7 @@ class LearningStore(private val kv: KeyValue) {
         private const val KEY_ENABLED = "enabled"
         private const val KEY_OPT_IN_ANSWERED = "opt_in_answered"
         private const val KEY_PENDING = "pending_suggestion"
+        private const val KEY_SHOWN = "suggestions_shown"
         private const val KEY_PLACES = "places"
     }
 }
