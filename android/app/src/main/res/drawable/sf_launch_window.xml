@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Window background for the whole launch: launch colour + the centred logo. It is on screen from
+     the first activity frame until React Native draws, and LogoScreen starts with the identical
+     logo (same size, 180x49dp), so there is no black gap / re-fade between native and JS. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/sf_launch_background" />
+        </shape>
+    </item>
+    <item
+        android:width="180dp"
+        android:height="49dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/silence_focus_splash_logo" />
+    </item>
+</layer-list>

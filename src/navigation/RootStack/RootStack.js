@@ -32,6 +32,9 @@ export default function RootStack() {
                 <RootStackNavigator.Screen
                     name={RootStackScreens.LogoScreen}
                     component={LogoScreen}
+                    // Transparent card: the native launch window (logo) shows through
+                    // until LogoScreen's own logo is drawn, so there is no black gap.
+                    options={{cardStyle: {backgroundColor: 'transparent'}}}
                 />
             ) : isGetStarted ? (
                 <RootStackNavigator.Screen

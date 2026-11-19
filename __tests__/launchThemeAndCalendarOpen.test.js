@@ -14,15 +14,21 @@ describe('launch surface (white/grey flash)', () => {
         const styles = res('values/styles.xml');
         expect(styles).toMatch(/Theme\.AppCompat\.DayNight\.NoActionBar/);
         expect(styles).not.toMatch(/windowIsTranslucent/);
-        expect(styles).toMatch(/android:windowBackground">@color\/sf_launch_background/);
+        expect(styles).toMatch(/android:windowBackground">@drawable\/sf_launch_window/);
+        expect(res('drawable/sf_launch_window.xml')).toMatch(/@color\/sf_launch_background/);
         expect(styles).not.toMatch(/#FFFFFF|#ffffff/);
     });
     test('Android 12+ system splash is a plain launch-coloured surface (no white icon circle)', () => {
         const styles = res('values/styles.xml');
         expect(styles).toMatch(/android:windowSplashScreenBackground"[^>]*>@color\/sf_launch_background/);
-        expect(styles).toMatch(/android:windowSplashScreenAnimatedIcon"[^>]*>@drawable\/sf_splash_empty_icon/);
-        expect(styles).toMatch(/android:windowSplashScreenIconBackgroundColor"[^>]*>@color\/sf_launch_background/);
-        expect(res('drawable/sf_splash_empty_icon.xml')).toMatch(/android:fillColor="#00000000"/);
+        expect(styles).toMatch(/android:windowSplashScreenAnimatedIcon"[^>]*>@drawable\/sf_splash_icon/);
+        // no icon background colour -> no coloured circle behind the icon
+        expect(styles).not.toMatch(/windowSplashScreenIconBackgroundColor/);
+        // pre-sized 288dp (1152px @xxxhdpi) transparent canvas carrying the 180x49dp logo, same as
+        // the window background and LogoScreen
+        expect(fs.existsSync(path.join(__dirname, '../android/app/src/main/res/drawable-xxxhdpi/sf_splash_icon.png'))).toBe(true);
+        expect(res('drawable/sf_launch_window.xml')).toMatch(/android:width="180dp"/);
+        expect(res('drawable/sf_launch_window.xml')).toMatch(/android:height="49dp"/);
     });
     test('splash layout follows the launch color, not hardcoded white', () => {
         expect(res('layout/launch_screen.xml')).toMatch(/@color\/sf_launch_background/);

@@ -49,6 +49,16 @@ import {describeSelection, getDeviceCalendars, openCalendarApp, saveCalendarSele
 
 const CALENDAR_SYNC_KEY = 'isCalendarSynced';
 
+// International numbers: "+" then up to 15 digits (E.164), e.g. +447548991310. The old field
+// stopped at 12 characters and only saved exactly 10 digits, so most non-local numbers could
+// not be entered. The server accepts up to 30 characters.
+const PHONE_MAX_LENGTH = 16;
+const sanitizePhone = t => (t || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+const isValidPhone = t => {
+    const digits = (t || '').replace(/\D/g, '').length;
+    return digits >= 7 && digits <= 15;
+};
+
 const ProfileScreen = () => {
     const navigation = useNavigation();
     // Round 3 (#4): which of the phone's calendars are used (summary line).
@@ -245,11 +255,13 @@ const ProfileScreen = () => {
     }, []);
 
     useEffect(() => {
-        if (!phoneNumber) return;
+        // Save only once the user has finished editing (field blurred / Done). Saving while
+        // typing showed the loader mid-number and took focus away from the field.
+        if (!phoneNumber || isEditingPhone) return;
 
         const timeout = setTimeout(() => {
             if (
-                phoneNumber.length === 10 &&
+                isValidPhone(phoneNumber) &&
                 phoneNumber !== savedPhoneRef.current
             ) {
                 const payload = {
@@ -267,7 +279,7 @@ const ProfileScreen = () => {
         }, 800);
 
         return () => clearTimeout(timeout);
-    }, [phoneNumber]);
+    }, [phoneNumber, isEditingPhone]);
 
     const UpdateUserProfileApiCall = async payload => {
         let url = EndPoints.updateProfile.replace(
@@ -458,8 +470,9 @@ const ProfileScreen = () => {
                                 <TextInput
                                     ref={phoneInputRef}
                                     value={phoneNumber}
-                                    onChangeText={setPhoneNumber}
+                                    onChangeText={t => setPhoneNumber(sanitizePhone(t))}
                                     onBlur={() => setIsEditingPhone(false)}
+                                    onSubmitEditing={() => setIsEditingPhone(false)}
                                     autoFocus
                                     keyboardType="phone-pad"
                                     style={[
@@ -468,7 +481,7 @@ const ProfileScreen = () => {
                                     ]}
                                     placeholder="+ Add Phone Number"
                                     placeholderTextColor={link}
-                                    maxLength={12}
+                                    maxLength={PHONE_MAX_LENGTH}
                                 />
                             ) : (
                                 <Pressable

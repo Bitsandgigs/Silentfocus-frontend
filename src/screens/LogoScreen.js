@@ -1,111 +1,90 @@
-import React, {useContext, useEffect, useRef} from 'react';
+import React, {useContext, useEffect, useRef, useState} from 'react';
 import {
   View,
+  Image,
   useColorScheme,
   StyleSheet,
   StatusBar,
   Animated,
   Easing,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
-import {SafeAreaView} from 'react-native-safe-area-context';
-import Svg, {
-  Defs,
-  LinearGradient,
-  Stop,
-  Text as SvgText,
-} from 'react-native-svg';
-import Logo from '../assets/svgs/logo'; // Mic+Slash Icon SVG
 import {AppContext} from '../utils/context/contextProvider';
 import SplashScreen from 'react-native-splash-screen';
+
+// Same bitmap and size (180x49dp) as the native launch window background
+// (android res/drawable/sf_launch_window.xml), so the hand-over from native to
+// JS is seamless: the logo is already fully visible, it is never re-faded in
+// from black. Only the exit (zoom out + fade) is animated.
+const LOGO = require('../assets/images/silence_focus_splash_logo.png');
+const HOLD_MS = 900;
+const EXIT_MS = 600;
+
 const LogoScreen = () => {
-  const navigation = useNavigation();
   const colorScheme = useColorScheme();
-  const scale = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
 
   const backgroundColor = colorScheme === 'dark' ? '#000' : '#fff';
   const barStyle = colorScheme === 'dark' ? 'light-content' : 'dark-content';
 
   const {setIsSplashShow} = useContext(AppContext);
 
+  // Until the JS logo bitmap is decoded the screen stays transparent so the native
+  // window-background logo keeps showing (an opaque black View with a not-yet-drawn
+  // Image caused a 2-3 frame blank flicker). Fallback so it can never stay transparent.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    // Step 1: Animate logo from inside out (scale + fade in)
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(scale, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.exp),
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.delay(500), // Hold the logo briefly
+    const t = setTimeout(() => setReady(true), 700);
+    return () => clearTimeout(t);
+  }, []);
 
-      // Step 2: Exit animation (fade out + zoom out)
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(HOLD_MS),
       Animated.parallel([
         Animated.timing(scale, {
           toValue: 1.6,
-          duration: 600,
+          duration: EXIT_MS,
           useNativeDriver: true,
           easing: Easing.in(Easing.cubic),
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 600,
+          duration: EXIT_MS,
           useNativeDriver: true,
         }),
       ]),
     ]).start();
 
-    // Step 3: Navigate after animation finishes
     const timeout = setTimeout(() => {
       setIsSplashShow(false);
-    }, 2500); // Total time of full animation
+    }, HOLD_MS + EXIT_MS);
 
     return () => clearTimeout(timeout);
-  }, [navigation, scale, opacity]);
+  }, [scale, opacity, setIsSplashShow]);
 
   useEffect(() => {
+    // No-op now that no native splash dialog is shown; kept for safety.
     SplashScreen.hide();
   }, []);
 
   return (
-    <SafeAreaView style={[styles.container, {backgroundColor}]}>
+    <View
+      style={[
+        styles.container,
+        {backgroundColor: ready ? backgroundColor : 'transparent'},
+      ]}>
       <StatusBar backgroundColor={backgroundColor} barStyle={barStyle} />
-
-      <Animated.View
-        style={[
-          styles.logoWrapper,
-          {
-            transform: [{scale}],
-            opacity,
-          },
-        ]}>
-        <Logo width={48} height={48} style={{marginRight: 12}} />
-        <Svg height="50" width="200">
-          <Defs>
-            <LinearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0%" stopColor="#F08A2C" />
-              <Stop offset="100%" stopColor="#8A4F19" />
-            </LinearGradient>
-          </Defs>
-          <SvgText
-            fill="url(#grad)"
-            fontSize="28"
-            fontWeight="bold"
-            x="0"
-            y="35">
-            Silent Focus
-          </SvgText>
-        </Svg>
+      <Animated.View style={{transform: [{scale}], opacity}}>
+        <Image
+          source={LOGO}
+          style={[styles.logo, {opacity: ready ? 1 : 0}]}
+          resizeMode="contain"
+          fadeDuration={0}
+          onLoad={() => setReady(true)}
+        />
       </Animated.View>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -115,27 +94,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  logo: {
+    width: 180,
+    height: 49,
   },
-
-  // container: {
-  //   flex: 1,
-  //   backgroundColor: '#ffffff',
-  //   justifyContent: 'center',
-  //   alignItems: 'center',
-  // },
-  // logoContainer: {
-  //   width: 200,
-  //   height: 200,
-  //   justifyContent: 'center',
-  //   alignItems: 'center',
-  // },
-  // logo: {
-  //   width: '100%',
-  //   height: '100%',
-  // },
 });
 
 export default LogoScreen;

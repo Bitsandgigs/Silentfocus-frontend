@@ -128,7 +128,17 @@ const CalendarPickerModal = ({visible, onClose, onSave, onRequestPermission}) =>
                 );
             default:
                 return (
-                    <ScrollView style={styles.list} testID="calendar-picker-list">
+                    <ScrollView
+                        style={styles.list}
+                        testID="calendar-picker-list"
+                        nestedScrollEnabled
+                        bounces
+                        overScrollMode="always"
+                        showsVerticalScrollIndicator
+                        persistentScrollbar
+                        keyboardShouldPersistTaps="handled"
+                        scrollEventThrottle={16}
+                        contentContainerStyle={styles.listContent}>
                         {groupCalendars(calendars).map(group => (
                             <View key={group.key} style={styles.group}>
                                 <Text style={[styles.groupTitle, {color: muted}]}>{group.title}</Text>
@@ -179,8 +189,11 @@ const CalendarPickerModal = ({visible, onClose, onSave, onRequestPermission}) =>
 
     return (
         <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose}>
-                <Pressable style={[styles.box2, {backgroundColor: boxBg}]} onPress={() => {}}>
+            <View style={styles.backdrop}>
+                {/* Tap outside closes. A sibling (not a wrapping Pressable) so it never competes
+                    with the list for the scroll gesture. */}
+                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+                <View style={[styles.box2, {backgroundColor: boxBg}]}>
                     <Text style={[styles.title, {color: text}]}>Choose calendars</Text>
                     <Text style={[styles.intro, {color: muted}]}>
                         Events in the calendars you select silence your phone. All calendars synced to this phone are
@@ -207,8 +220,8 @@ const CalendarPickerModal = ({visible, onClose, onSave, onRequestPermission}) =>
                             </TouchableOpacity>
                         ) : null}
                     </View>
-                </Pressable>
-            </Pressable>
+                </View>
+            </View>
         </Modal>
     );
 };
@@ -224,7 +237,7 @@ const styles = StyleSheet.create({
     },
     box2: {
         width: wp('88%'),
-        maxHeight: hp('80%'),
+        maxHeight: hp('86%'),
         borderRadius: wp('3%'),
         padding: wp('5%'),
     },
@@ -239,8 +252,14 @@ const styles = StyleSheet.create({
         lineHeight: wp('4.6%'),
         marginBottom: hp('1%'),
     },
+    // flexShrink lets the list take all the room the dialog has (it was capped at 48% of the
+    // screen, so only ~4 rows were visible and every drag had to be tiny).
     list: {
-        maxHeight: hp('48%'),
+        flexGrow: 0,
+        flexShrink: 1,
+    },
+    listContent: {
+        paddingBottom: hp('1%'),
     },
     group: {
         marginTop: hp('1%'),
